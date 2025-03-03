@@ -865,20 +865,20 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             s.wfile.write(b'<p>AI: ')
             
             for i,(display,value) in enumerate([("Outer State AI", "outer"), ("Intentional AI", "intentional"), ("Full AI", "full")]):
-                s.wfile.write(b' <a href="/selectreplay/%s">%s</a> - '%(format_filters(update_filters(filters, "ai", value)), display))
-            s.wfile.write(b' <a href="/selectreplay/%s">any</a></p>'%(format_filters(update_filters(filters, "ai", ""))))
+                s.wfile.write((' <a href="/selectreplay/%s">%s</a> - '%(format_filters(update_filters(filters, "ai", value)), display)).encode())
+            s.wfile.write((' <a href="/selectreplay/%s">any</a></p>'%(format_filters(update_filters(filters, "ai", "")))).encode())
             
             s.wfile.write(b'<p>Score: ')
             
             for i,(display,value) in enumerate([("0-4", "0"), ("5-9", "1"), ("10-14", "2"), ("15-19", "3"), ("20-24", "4"), ("25", "5")]):
-                s.wfile.write(b' <a href="/selectreplay/%s">%s</a> - '%(format_filters(update_filters(filters, "score", value)), display))
-            s.wfile.write(b' <a href="/selectreplay/%s">any</a></p>'%(format_filters(update_filters(filters, "score", ""))))
+                s.wfile.write((' <a href="/selectreplay/%s">%s</a> - '%(format_filters(update_filters(filters, "score", value)), display)).encode())
+            s.wfile.write((' <a href="/selectreplay/%s">any</a></p>'%(format_filters(update_filters(filters, "score", "")))).encode())
             
             s.wfile.write(b'<p>Deck: ')
             
             for i,(display,value) in enumerate([("1", "1"), ("2", "2"), ("3", "3"), ("4", "4"), ("5", "5"), ("other", "other")]):
-                s.wfile.write(b' <a href="/selectreplay/%s">%s</a> - '%(format_filters(update_filters(filters, "deck", value)), display))
-            s.wfile.write(b' <a href="/selectreplay/%s">any</a></p>'%(format_filters(update_filters(filters, "deck", ""))))
+                s.wfile.write((' <a href="/selectreplay/%s">%s</a> - '%(format_filters(update_filters(filters, "deck", value)), display)).encode())
+            s.wfile.write((' <a href="/selectreplay/%s">any</a></p>'%(format_filters(update_filters(filters, "deck", "")))).encode())
             
             s.wfile.write(b'Select a replay to view:<br/><ul>')
             replays = []
