@@ -27,7 +27,7 @@ debug = True
 
 errlog = sys.stdout
 if not debug:
-    errlog = file("hanabi.log", "w")
+    errlog = open("hanabi.log", "w")
 
 
 
@@ -633,7 +633,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
                 ai = ais[type](type, 0)
             turn = 1
             player = HTTPPlayer("You", 1)
-            log = file("log/game%s.log"%gid, "w")
+            log = open("log/game%s.log"%gid, "w")
             print("Old GID:", oldgid, file=log)
             print("Treatment:", t, file=log)
             random.seed(nr)
@@ -1022,7 +1022,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
         for line in game.players[0].get_explanation():
             s.wfile.write(b'<tr>\n')
             for item in line:
-                s.wfile.write(b'\t<td>%s</td>\n'%(str(item).replace("\n", "<br/>")))
+                s.wfile.write(('\t<td>%s</td>\n'%(str(item).replace("\n", "<br/>"))).encode())
             s.wfile.write(b'</tr>\n')
         s.wfile.write(b"</table>\n")
        
@@ -1035,9 +1035,9 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
         s.wfile.write(('<fieldset id="%s">\n'%name).encode('utf-8'))
         for i,(aname,text) in enumerate(answers):
              if i == default:
-                 s.wfile.write(b'<input name="%s" type="radio" value="%s" id="%s%s" checked="checked"/><label for="%s%s">%s</label><br/>\n'%(name,aname,name,aname, name,aname,text))
+                 s.wfile.write(('<input name="%s" type="radio" value="%s" id="%s%s" checked="checked"/><label for="%s%s">%s</label><br/>\n'%(name,aname,name,aname, name,aname,text)).encode())
              else:
-                 s.wfile.write(b'<input name="%s" type="radio" value="%s" id="%s%s"/><label for="%s%s">%s</label><br/>\n'%(name,aname,name,aname,name,aname,text))
+                 s.wfile.write(('<input name="%s" type="radio" value="%s" id="%s%s"/><label for="%s%s">%s</label><br/>\n'%(name,aname,name,aname,name,aname,text)).encode)
         s.wfile.write(b"</fieldset>\n")
         s.wfile.write(b"</p>")
         
@@ -1218,7 +1218,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
                 gid = vars["gid"]
             participantslock.acquire()
             if gid not in participants:
-                participants[gid] = file("log/survey%s.log"%gid, "w")
+                participants[gid] = open("log/survey%s.log"%gid, "w")
                 participantstarts[gid] = time.time()
             participantslock.release()
             treatments = [("intentional", 1), ("intentional", 2), ("intentional", 3), ("intentional", 4), ("intentional", 5),

@@ -150,7 +150,10 @@ class InnerStatePlayer(Player):
     def __init__(self, name, pnr):
         self.name = name
         self.explanation = []
+        self.pnr = pnr
+
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
+        print(self.pnr == nr)
         handsize = len(knowledge[0])
         possible = []
         for k in knowledge[nr]:
@@ -212,7 +215,9 @@ class OuterStatePlayer(Player):
         self.hints = {}
         self.pnr = pnr
         self.explanation = []
+
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
+        
         handsize = len(knowledge[0])
         possible = []
         for k in knowledge[nr]:
@@ -293,6 +298,7 @@ class OuterStatePlayer(Player):
                 if (action.cnr+i+1,player) in self.hints:
                     self.hints[(action.cnr+i,player)] = self.hints[(action.cnr+i+1,player)]
                     self.hints[(action.cnr+i+1,player)] = []
+        print(self.hints)
 
                     
 def generate_hands(knowledge, used={}):
@@ -1152,9 +1158,9 @@ class FullyIntentionalPlayer(Player):
         self.last_board = []
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
         handsize = len(knowledge[0])
-        possible = []
+        possible = []        
         
-        
+        print(knowledge)
         self.gothint = None
         for k in knowledge[nr]:
             possible.append(get_possible(k))
@@ -1187,8 +1193,6 @@ class FullyIntentionalPlayer(Player):
                         discardables.append((i,j))
                         if not intentions[j]:
                             intentions[j] = CANDISCARD
-        
-        
 
         if hints > 0:
             valid = []
@@ -1261,8 +1265,56 @@ def format_card(xxx_todo_changeme15):
         
 def format_hand(hand):
     return ", ".join(map(format_card, hand))
+    
+
+class ProbabilisticPlayer (Player):
+    def __init__(self, name, pnr):
+        self.name = name
+        self.hints = {}
+        self.pnr = pnr
+        self.gothint = None
+        self.last_knowledge = []
+        self.last_played = []
+        self.last_board = []
         
 
+    def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
+        #knowledge already filters out based on hints given, we want to further filter out by removing any cards we know it cannot be
+        # i.e. cards in the opponents hand, cards already played, and cards in the trash
+        used = {}
+        for c in ALL_COLORS:
+            for i,cnt in enumerate(COUNTS):
+                used[(c,i+1)] = 0
+        
+
+        impossible_cards = trash + played
+        for i in range(len(hands)):
+            if i != self.pnr:
+                impossible_cards += hands[i]
+        for c in impossible_cards:
+            used[c] += 1
+
+        updated_hand_knowledge = update_knowledge[knowledge[nr], used]
+        
+
+        return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
+    
+    def inform(self, action, player, game):
+        if action.type in [PLAY, DISCARD]:
+            x = str(action)
+            if (action.cnr,player) in self.hints:
+                self.hints[(action.cnr,player)] = []
+            for i in range(10):
+                if (action.cnr+i+1,player) in self.hints:
+                    self.hints[(action.cnr+i,player)] = self.hints[(action.cnr+i+1,player)]
+                    self.hints[(action.cnr+i+1,player)] = []
+        elif action.pnr == self.pnr:
+            self.gothint = (action,player)
+            self.last_knowledge = game.knowledge[:]
+            self.last_board = game.board[:]
+            self.last_trash = game.trash[:]
+            self.played = game.played[:]
+    
 class Game(object):
     def __init__(self, players, log=sys.stdout, format=0):
         self.players = players
