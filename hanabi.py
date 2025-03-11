@@ -1,7 +1,10 @@
+from collections import Counter
 import random
 import sys
 import copy
 import time
+
+import numpy as np
 
 GREEN = 0
 YELLOW = 1
@@ -153,7 +156,7 @@ class InnerStatePlayer(Player):
         self.pnr = pnr
 
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
-        print(self.pnr == nr)
+        print(hands)
         handsize = len(knowledge[0])
         possible = []
         for k in knowledge[nr]:
@@ -1275,31 +1278,63 @@ class ProbabilisticPlayer (Player):
         self.gothint = None
         self.last_knowledge = []
         self.last_played = []
-        self.last_board = []
-        
+        self.last_board = [(c, 0) for c in ALL_COLORS]
+        self.playable_cards = [(col, 1) for col in ALL_COLORS]
+        self.hits = 0
 
+        self.probability_threshold = { #dictionary of {number_of_hits: minimum_probability} ~ if we want to play a card we need to be at least mp sure that it is correct
+            0: 0.65,
+            1: 0.8,
+            2: 0.95
+        }
+
+    """
+        How do i want this to work - 
+        Action priority:
+        1. if likely playable card - play card
+        2. if has hint token
+        -   1. if opponent has playable card - hint playable card
+        -   2. if has good amount of hint tokens - hint whatever gives the opponent the most amount of knowledge about their hand
+        2.5 if opponent has hinted at a useless card and hint token < max
+        -   discard useless card
+        else
+        -   discard card based on which is most likely to be useless or which is most likely to be expendable 
+        
+    """
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
+        # print("geT_action")
+        # print(self.last_board)
+        # print(hands)
         #knowledge already filters out based on hints given, we want to further filter out by removing any cards we know it cannot be
         # i.e. cards in the opponents hand, cards already played, and cards in the trash
-        used = {}
-        for c in ALL_COLORS:
-            for i,cnt in enumerate(COUNTS):
-                used[(c,i+1)] = 0
+        updated_hand_knowledge = self.update_hand_knowledge(knowledge[nr], trash, played, hands)
+        self.update_playable_cards(self, board)
+        print("KNOWLEDGE")
+        print(knowledge)
+
+        print("UPDATED HAND KNOWLEDGE")
+        print(updated_hand_knowledge)
         
-
-        impossible_cards = trash + played
-        for i in range(len(hands)):
-            if i != self.pnr:
-                impossible_cards += hands[i]
-        for c in impossible_cards:
-            used[c] += 1
-
-        updated_hand_knowledge = update_knowledge[knowledge[nr], used]
         
 
         return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
+
+    def update_playable_cards(self, board):
+        for i, (col, num) in enumerate(board):
+            self.playable_cards[i] = (col, num + 1) #Because of this, we would have a (e.g.) (RED, 6) be playable. while that isn't possible in game we can treat 6 to mean completed stack which will likely happen anyways since we would be checking if we have a red 6 which will never be the case.
+
+      
+        
     
+    def update_hand_knowledge(self, hand_knowledge, trash, played, hands):
+        used_cards = trash + played + [card for hand in hands for card in hand]
+        card_counts = Counter(used_cards)
+        used = dict(card_counts)
+        updated_hand_knowledge = update_knowledge(hand_knowledge, used)
+        
+
     def inform(self, action, player, game):
+        self.hits = game.hits
         if action.type in [PLAY, DISCARD]:
             x = str(action)
             if (action.cnr,player) in self.hints:

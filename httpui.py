@@ -494,7 +494,7 @@ def format_score(sc):
     
                 
 # AIClasses
-ais = {"random": hanabi.Player, "inner": hanabi.InnerStatePlayer, "outer": hanabi.OuterStatePlayer, "self": hanabi.SelfRecognitionPlayer, "intentional": hanabi.IntentionalPlayer, "full": hanabi.SelfIntentionalPlayer}
+ais = {"random": hanabi.Player, "inner": hanabi.InnerStatePlayer, "outer": hanabi.OuterStatePlayer, "self": hanabi.SelfRecognitionPlayer, "intentional": hanabi.IntentionalPlayer, "full": hanabi.SelfIntentionalPlayer, "probabilistic": hanabi.ProbabilisticPlayer}
 
 class MyHandler(http.server.BaseHTTPRequestHandler):
     def do_HEAD(s):
@@ -960,6 +960,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             s.wfile.write(b'<li><a href="/new/self">Self Recognition</a></li>\n')
             s.wfile.write(b'<li><a href="/new/intentional">Intentional Player</a></li>\n')
             s.wfile.write(b'<li><a href="/new/full">Fully Intentional Player</a></li>\n')
+            s.wfile.write(b'<li><a href="/new/probabilistic">Probabilistic Player</a></li>\n')
             s.wfile.write(b'</ul><br/>')
             s.wfile.write(b'<p>Or select a <a href="/selectreplay/">replay file to view</a></p>')
             s.wfile.write(b'</body></html>')
