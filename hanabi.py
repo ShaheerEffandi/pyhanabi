@@ -358,7 +358,7 @@ class SelfRecognitionPlayer(Player):
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
         handsize = len(knowledge[0])
         possible = []
-        
+        print(self.hints)
         if self.gothint:
             
             possiblehands = []
@@ -1163,7 +1163,6 @@ class FullyIntentionalPlayer(Player):
         handsize = len(knowledge[0])
         possible = []        
         
-        print(knowledge)
         self.gothint = None
         for k in knowledge[nr]:
             possible.append(get_possible(k))
@@ -1280,12 +1279,13 @@ class ProbabilisticPlayer (Player):
         self.last_played = []
         self.last_board = [(c, 0) for c in ALL_COLORS]
         self.playable_cards = [(col, 1) for col in ALL_COLORS]
-        self.hits = 0
+        self.hits = 3
+        self.game=None
 
-        self.probability_threshold = { #dictionary of {number_of_hits: minimum_probability} ~ if we want to play a card we need to be at least mp sure that it is correct
-            0: 0.65,
-            1: 0.8,
-            2: 0.95
+        self.probability_threshold = { #dictionary of {number_of_hits_left: minimum_probability} ~ if we want to play a card we need to be at least mp sure that it is correct
+            3: 0.65,
+            2: 0.8,
+            1: 0.9
         }
 
     """
@@ -1302,41 +1302,54 @@ class ProbabilisticPlayer (Player):
         
     """
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
-        # print("geT_action")
-        # print(self.last_board)
-        # print(hands)
-        #knowledge already filters out based on hints given, we want to further filter out by removing any cards we know it cannot be
+       
+        # knowledge already filters out based on hints given, we want to further filter out by removing any cards we know it cannot be
         # i.e. cards in the opponents hand, cards already played, and cards in the trash
+
         updated_hand_knowledge = self.update_hand_knowledge(knowledge[nr], trash, played, hands)
-        self.update_playable_cards(self, board)
-        print("KNOWLEDGE")
-        print(knowledge)
-
-        print("UPDATED HAND KNOWLEDGE")
-        print(updated_hand_knowledge)
+        self.update_playable_cards(board)
+        print(self.playable_cards)        
+        #possible play actions
+        possible_cards_to_play = []
+        for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
+            total_number_of_possible_cards = np.sum(card)
+            probabilities = card.copy()/total_number_of_possible_cards
+            probabilities_of_playable = probabilities[self.get_playable_cards()]
+            
+            
+            if np.sum(probabilities_of_playable) > self.probability_threshold[self.hits]:
+                print(f"i: {i}")
+                print(np.sum(probabilities_of_playable))
+                possible_cards_to_play.append(i)
         
+        if len(possible_cards_to_play) > 0:
+            print("chose action")
+            return Action(PLAY, cnr=np.random.choice(possible_cards_to_play))
         
-
         return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
+
 
     def update_playable_cards(self, board):
         for i, (col, num) in enumerate(board):
-            self.playable_cards[i] = (col, num + 1) #Because of this, we would have a (e.g.) (RED, 6) be playable. while that isn't possible in game we can treat 6 to mean completed stack which will likely happen anyways since we would be checking if we have a red 6 which will never be the case.
-
-      
-        
+            self.playable_cards[i] = [col, 4] if num == 5 else [col, num] #this is to store which cards are playable as indexes for a numpy array. if a stack of colours is complete, then we simply keep the playable as [col, 4] since that would refer to a card with (col, 5) because of 0-indexing. and since there is only 1 copy of each (col, 5), it should theoretically never cause a problem. 
+    
+    def get_playable_cards(self):
+        col_ind, rank_ind = zip(*self.playable_cards)
+        return col_ind, rank_ind    
     
     def update_hand_knowledge(self, hand_knowledge, trash, played, hands):
         used_cards = trash + played + [card for hand in hands for card in hand]
         card_counts = Counter(used_cards)
         used = dict(card_counts)
-        updated_hand_knowledge = update_knowledge(hand_knowledge, used)
-        
+        return np.array(update_knowledge(hand_knowledge, used))
+    
 
     def inform(self, action, player, game):
         self.hits = game.hits
         if action.type in [PLAY, DISCARD]:
+
             x = str(action)
+
             if (action.cnr,player) in self.hints:
                 self.hints[(action.cnr,player)] = []
             for i in range(10):
@@ -1349,6 +1362,7 @@ class ProbabilisticPlayer (Player):
             self.last_board = game.board[:]
             self.last_trash = game.trash[:]
             self.played = game.played[:]
+    
     
 class Game(object):
     def __init__(self, players, log=sys.stdout, format=0):
