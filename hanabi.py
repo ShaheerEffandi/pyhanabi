@@ -1278,10 +1278,9 @@ class ProbabilisticPlayer (Player):
         self.last_knowledge = []
         self.last_played = []
         self.last_board = [(c, 0) for c in ALL_COLORS]
-        self.playable_cards = [(col, 1) for col in ALL_COLORS]
+        self.playable_cards = [[col, 0] for col in ALL_COLORS]
         self.hits = 3
         self.game=None
-
         self.probability_threshold = { #dictionary of {number_of_hits_left: minimum_probability} ~ if we want to play a card we need to be at least mp sure that it is correct
             3: 0.65,
             2: 0.8,
@@ -1316,7 +1315,6 @@ class ProbabilisticPlayer (Player):
             probabilities = card.copy()/total_number_of_possible_cards
             probabilities_of_playable = probabilities[self.get_playable_cards()]
             
-            
             if np.sum(probabilities_of_playable) > self.probability_threshold[self.hits]:
                 print(f"i: {i}")
                 print(np.sum(probabilities_of_playable))
@@ -1326,9 +1324,17 @@ class ProbabilisticPlayer (Player):
             print("chose action")
             return Action(PLAY, cnr=np.random.choice(possible_cards_to_play))
         
+        op_playable = self.get_opponents_playable_cards(hands)
+        hints = []
+        expected_information_gain_of_playable_cards = np.zero(len(op_playable))
+        for pnr, playables in op_playable.items():
+            hint, eig = self.get_best_hint(np.array(hands[pnr]), np.array(knowledge[pnr]), pnr, playables)
+        
+            
+        
         return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
 
-
+              
     def update_playable_cards(self, board):
         for i, (col, num) in enumerate(board):
             self.playable_cards[i] = [col, 4] if num == 5 else [col, num] #this is to store which cards are playable as indexes for a numpy array. if a stack of colours is complete, then we simply keep the playable as [col, 4] since that would refer to a card with (col, 5) because of 0-indexing. and since there is only 1 copy of each (col, 5), it should theoretically never cause a problem. 
@@ -1343,7 +1349,28 @@ class ProbabilisticPlayer (Player):
         used = dict(card_counts)
         return np.array(update_knowledge(hand_knowledge, used))
     
-
+    def get_opponents_playable_cards(self, hands):
+            op_playable = {} #dictionary that store for each player, which of their cards are playable
+            for pnr, hand in enumerate(hands):
+                if pnr == self.pnr:
+                    continue
+                
+                op_playable[i] = []
+                for cnr, (col, rank) in enumerate(hand):
+                    card = [col, rank - 1]
+                    if card in self.playable_cards:
+                        op_playable[pnr].append(cnr)
+            
+            return op_playable
+                        
+    def get_best_hint(self, hand, knowledge, pnr, playable):
+        playables_in_hand = hand[playable]
+        not_playable_in_hand = hand[~np.isin(hand, playables_in_hand)]
+        knowledge_of_playables = knowledge[playable]
+        knowledge_of_unplayables = knowledge[~np.isin(knowledge, knowledge_of_unplayables)]
+        
+    
+    
     def inform(self, action, player, game):
         self.hits = game.hits
         if action.type in [PLAY, DISCARD]:
