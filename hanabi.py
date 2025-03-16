@@ -1307,7 +1307,7 @@ class ProbabilisticPlayer (Player):
 
         updated_hand_knowledge = self.update_hand_knowledge(knowledge[nr], trash, played, hands)
         self.update_playable_cards(board)
-        print(self.playable_cards)        
+        
         #possible play actions
         possible_cards_to_play = []
         for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
@@ -1316,21 +1316,29 @@ class ProbabilisticPlayer (Player):
             probabilities_of_playable = probabilities[self.get_playable_cards()]
             
             if np.sum(probabilities_of_playable) > self.probability_threshold[self.hits]:
-                print(f"i: {i}")
-                print(np.sum(probabilities_of_playable))
                 possible_cards_to_play.append(i)
         
         if len(possible_cards_to_play) > 0:
-            print("chose action")
+            
             return Action(PLAY, cnr=np.random.choice(possible_cards_to_play))
         
-        op_playable = self.get_opponents_playable_cards(hands)
-        hints = []
-        expected_information_gain_of_playable_cards = np.zero(len(op_playable))
-        for pnr, playables in op_playable.items():
-            hint, eig = self.get_best_hint(np.array(hands[pnr]), np.array(knowledge[pnr]), pnr, playables)
+        if hint > 1:
+            op_playable = self.get_opponents_playable_cards(hands)
+            best_hint = None
+            expected_information_gain = 0
+            print(np.array(hands[1]))
+            print(op_playable)
+            if any(len(card) for card in op_playable.values()):
         
-            
+                for pnr, playables in op_playable.items():
+                    hint, eig = self.get_best_hint(np.array(hands[pnr]), np.array(knowledge[pnr]), pnr, playables)
+                    if best_hint is None or eig > expected_information_gain:
+                        best_hint = hint
+                        expected_information_gain = eig
+                
+                print(expected_information_gain)
+                print("best hint")
+                return best_hint
         
         return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
 
@@ -1355,21 +1363,93 @@ class ProbabilisticPlayer (Player):
                 if pnr == self.pnr:
                     continue
                 
-                op_playable[i] = []
+                op_playable[pnr] = []
                 for cnr, (col, rank) in enumerate(hand):
                     card = [col, rank - 1]
                     if card in self.playable_cards:
                         op_playable[pnr].append(cnr)
             
             return op_playable
-                        
+        
+    def entropy(self, probability_distribution):
+        probability_distribution = probability_distribution[probability_distribution > 0]
+        return -np.sum(probability_distribution * np.log2(probability_distribution))
+            
+    def information_gain(self, prob_dist_before, prob_dist_after):
+        return self.entropy(prob_dist_before) - self.entropy(prob_dist_after)
+            
     def get_best_hint(self, hand, knowledge, pnr, playable):
         playables_in_hand = hand[playable]
-        not_playable_in_hand = hand[~np.isin(hand, playables_in_hand)]
-        knowledge_of_playables = knowledge[playable]
-        knowledge_of_unplayables = knowledge[~np.isin(knowledge, knowledge_of_unplayables)]
         
+        possible_colour_hints = np.unique(playables_in_hand[:, 0])
+        possible_rank_hints = np.unique(playables_in_hand[:, 1])
+        
+        possible_hints = [Action(type=HINT_COLOR, pnr=pnr, col=col) for col in possible_colour_hints] + [Action(type=HINT_NUMBER, pnr=pnr, num=num) for num in possible_rank_hints]
+        info_gain = np.zeros(len(possible_hints))
+        for i, hint in enumerate(possible_hints):
+            print("*****")
+            print(hint)
+            prob_dist_before_hint = self.calculate_prob_dist(knowledge)
+            knowledge_after_hint = self.simulate_hint(hand, knowledge, hint)
+            prob_dist_after_hint = self.calculate_prob_dist(knowledge_after_hint)
+            print(prob_dist_before_hint)
+            print("_____")
+            print(prob_dist_after_hint)
+            
+            
+            ig = self.calculate_net_info_gain(prob_dist_before_hint, prob_dist_after_hint, playable)
+            info_gain[i] = ig
+            print(ig)
+            print("*****")
+            
+        best = np.argmax(info_gain)
+        return (possible_hints[best], info_gain[best])
     
+    def calculate_prob_dist(self, knowledge):
+        return np.array([
+            card_dist/np.sum(card_dist) if np.sum(card_dist) > 0 else np.zeros_like(card_dist) 
+            for card_dist in knowledge
+            ])
+        
+        
+        
+    def simulate_hint(self, hand, knowledge, hint):
+        if hint.type == HINT_COLOR:
+            return self.simulate_colour_hint(hand, knowledge, hint.col) #continue from here 
+            #need to create the probability distribution from the knowledge = knowledge / sum of knowledge for each card in hand.
+        else:
+            return self.simulate_rank_hint(hand, knowledge, hint.num)
+    
+    def simulate_colour_hint(self, hand, knowledge, col):
+        post_hint_knowledge = knowledge.copy()
+        matching_colour_indexes = np.array([card[0] == col for card in hand])
+
+        post_hint_knowledge[matching_colour_indexes] = 0
+        post_hint_knowledge[matching_colour_indexes, col] = knowledge[matching_colour_indexes, col]
+        post_hint_knowledge[~matching_colour_indexes, col] = 0
+
+        return post_hint_knowledge
+            
+    def simulate_rank_hint(self, hand, knowledge, num):
+        post_hint_knowledge = knowledge.copy()
+        matching_number_indexes = np.array([card[1] == num for card in hand])
+        
+        post_hint_knowledge[matching_number_indexes] = 0 
+        post_hint_knowledge[matching_number_indexes, :, num - 1] = knowledge[matching_number_indexes, :, num -1]
+        post_hint_knowledge[~matching_number_indexes, :, num] = 0
+        
+        return post_hint_knowledge 
+    
+    def calculate_net_info_gain(self, before_dist, after_dist, playable_indexes, lamda_weight=0.9):
+        info_gain_playable = info_gain_unplayable = 0
+        for i, (b_dist, a_dist) in enumerate(zip(before_dist, after_dist)):
+            info_gain = self.information_gain(b_dist, a_dist)
+            if i in playable_indexes:
+                info_gain_playable += info_gain
+            else:
+                info_gain_unplayable += info_gain
+        
+        return (lamda_weight * info_gain_playable - (1-lamda_weight) *info_gain_unplayable)
     
     def inform(self, action, player, game):
         self.hits = game.hits
