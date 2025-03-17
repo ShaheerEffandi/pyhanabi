@@ -1324,34 +1324,50 @@ class ProbabilisticPlayer (Player):
         
         if hints > 1:
             op_playable = self.get_opponents_playable_cards(hands)
-            best_hint = None
-            expected_information_gain = 0
-            if any(len(card) for card in op_playable.values()):
+            best_hint = self.get_best_hint_for_all_opponent(
+                target_cards=op_playable,
+                hands = hands,
+                knowledge=knowledge
+            )
+            if best_hint is not None:
+                return best_hint
+            # expected_information_gain = 0
+            # if any(len(card) for card in op_playable.values()):
         
-                for pnr, playables in op_playable.items():
-                    hint, eig = self.get_best_hint(np.array(hands[pnr]), np.array(knowledge[pnr]), pnr, playables)
-                    if best_hint is None or eig > expected_information_gain:
-                        best_hint = hint
-                        expected_information_gain = eig
+            #     for pnr, playables in op_playable.items():
+            #         hint, eig = self.get_best_hint(np.array(hands[pnr]), np.array(knowledge[pnr]), pnr, playables)
+            #         if best_hint is None or eig > expected_information_gain:
+            #             best_hint = hint
+            #             expected_information_gain = eig
                                 
-                if expected_information_gain > 0: #If we have all the infomration about playable cards hinted already, but we draw a new unplayable card, it probably would not be helpful to give information on the non-playable cards. so we might elect to do something different on our turn.  
-                    return best_hint
+            #     if expected_information_gain > 0: #If we have all the infomration about playable cards hinted already, but we draw a new unplayable card, it probably would not be helpful to give information on the non-playable cards. so we might elect to do something different on our turn.  
+            #         return best_hint
+                
+ 
             
-            best_hint = None
-            expected_information_gain = 0
             op_discardable = self.get_opponents_discardable_cards(hands=hands, board=board)
-            #A possible addition to the discardable cards is taking into consideration if the card in the opponents hand cannot be played as all the cards for the colour to progress are in the trash
-            if any(len(card) for card in op_discardable.values()):
+            best_hint = self.get_best_hint_for_all_opponent(
+                target_cards=op_discardable,
+                hands=hands, 
+                knowledge=knowledge
+                )
+            
+            if best_hint is not None:
+                return best_hint
+            # best_hint = None 
+            # expected_information_gain = 0
+            # op_discardable = self.get_opponents_discardable_cards(hands=hands, board=board)
+            # #A possible addition to the discardable cards is taking into consideration if the card in the opponents hand cannot be played as all the cards for the colour to progress are in the trash
+            # if any(len(card) for card in op_discardable.values()):
         
-                for pnr, discardable in op_discardable.items():
-                    hint, eig = self.get_best_hint(np.array(hands[pnr]), np.array(knowledge[pnr]), pnr, discardable)
-                    if best_hint is None or eig > expected_information_gain:
-                        best_hint = hint
-                        expected_information_gain = eig
+            #     for pnr, discardable in op_discardable.items():
+            #         hint, eig = self.get_best_hint(np.array(hands[pnr]), np.array(knowledge[pnr]), pnr, discardable)
+            #         if best_hint is None or eig > expected_information_gain:
+            #             best_hint = hint
+            #             expected_information_gain = eig
 
-                if expected_information_gain > 0:
-                    print("discardable useless")
-                    return best_hint
+            #     if expected_information_gain > 0:
+            #         return best_hint
 
 
 
@@ -1371,6 +1387,24 @@ class ProbabilisticPlayer (Player):
         card_counts = Counter(used_cards)
         used = dict(card_counts)
         return np.array(update_knowledge(hand_knowledge, used))
+
+    def get_best_hint_for_all_opponent(self, target_cards, hands, knowledge):
+        best_hint = None
+        expected_information_gain = 0
+        # op_discardable = self.get_opponents_discardable_cards(hands=hands, board=board)
+        #A possible addition to the discardable cards is taking into consideration if the card in the opponents hand cannot be played as all the cards for the colour to progress are in the trash
+        if any(len(card) for card in target_cards.values()):
+    
+            for pnr, discardable in target_cards.items():
+                hint, eig = self.get_best_hint(np.array(hands[pnr]), np.array(knowledge[pnr]), pnr, discardable)
+                if best_hint is None or eig > expected_information_gain:
+                    best_hint = hint
+                    expected_information_gain = eig
+
+            if expected_information_gain > 0:
+                return best_hint
+            else:
+                return None
 
     def get_opponents_cards(self, hands, condition):
     
