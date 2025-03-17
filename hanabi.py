@@ -1322,12 +1322,11 @@ class ProbabilisticPlayer (Player):
             
             return Action(PLAY, cnr=np.random.choice(possible_cards_to_play))
         
-        if hint > 1:
+        print(board)
+        if hints > 1:
             op_playable = self.get_opponents_playable_cards(hands)
             best_hint = None
             expected_information_gain = 0
-            print(np.array(hands[1]))
-            print(op_playable)
             if any(len(card) for card in op_playable.values()):
         
                 for pnr, playables in op_playable.items():
@@ -1336,10 +1335,31 @@ class ProbabilisticPlayer (Player):
                         best_hint = hint
                         expected_information_gain = eig
                 
-                print(expected_information_gain)
-                print("best hint")
-                return best_hint
+                
+                if expected_information_gain > 0: #If we have all the infomration about playable cards hinted already, but we draw a new unplayable card, it probably would not be helpful to give information on the non-playable cards. so we might elect to do something different on our turn.  
+                    print("best hint")
+                    return best_hint
+            
+
+            
+            best_hint = None
+            expected_information_gain = 0
+            op_discardable = self.get_opponents_discardable_cards(hands=hands, board=board)
+            #A possible addition to the discardable cards is taking into consideration if the card in the opponents hand cannot be played as all the cards for the colour to progress are in the trash
+            if any(len(card) for card in op_discardable.values()):
         
+                for pnr, discardable in op_discardable.items():
+                    hint, eig = self.get_best_hint(np.array(hands[pnr]), np.array(knowledge[pnr]), pnr, discardable)
+                    if best_hint is None or eig > expected_information_gain:
+                        best_hint = hint
+                        expected_information_gain = eig
+
+                if expected_information_gain > 0:
+                    print("discardable useless")
+                    return best_hint
+
+
+
         return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
 
               
@@ -1371,6 +1391,18 @@ class ProbabilisticPlayer (Player):
             
             return op_playable
         
+    def get_opponents_discardable_cards(self, board, hands):
+            op_discardable = {} #dictionary that store for each player, which of their cards are discardable
+            for pnr, hand in enumerate(hands):
+                if pnr == self.pnr:
+                    continue
+                op_discardable[pnr] = []
+                for cnr, (col, rank) in enumerate(hand):
+                    if board[col][1] >= rank:
+                        op_discardable[pnr].append(cnr)
+            
+            return op_discardable
+
     def entropy(self, probability_distribution):
         probability_distribution = probability_distribution[probability_distribution > 0]
         return -np.sum(probability_distribution * np.log2(probability_distribution))
@@ -1378,8 +1410,8 @@ class ProbabilisticPlayer (Player):
     def information_gain(self, prob_dist_before, prob_dist_after):
         return self.entropy(prob_dist_before) - self.entropy(prob_dist_after)
             
-    def get_best_hint(self, hand, knowledge, pnr, playable):
-        playables_in_hand = hand[playable]
+    def get_best_hint(self, hand, knowledge, pnr, target):
+        playables_in_hand = hand[target]
         
         possible_colour_hints = np.unique(playables_in_hand[:, 0])
         possible_rank_hints = np.unique(playables_in_hand[:, 1])
@@ -1387,20 +1419,13 @@ class ProbabilisticPlayer (Player):
         possible_hints = [Action(type=HINT_COLOR, pnr=pnr, col=col) for col in possible_colour_hints] + [Action(type=HINT_NUMBER, pnr=pnr, num=num) for num in possible_rank_hints]
         info_gain = np.zeros(len(possible_hints))
         for i, hint in enumerate(possible_hints):
-            print("*****")
-            print(hint)
             prob_dist_before_hint = self.calculate_prob_dist(knowledge)
             knowledge_after_hint = self.simulate_hint(hand, knowledge, hint)
             prob_dist_after_hint = self.calculate_prob_dist(knowledge_after_hint)
-            print(prob_dist_before_hint)
-            print("_____")
-            print(prob_dist_after_hint)
+
             
             
-            ig = self.calculate_net_info_gain(prob_dist_before_hint, prob_dist_after_hint, playable)
-            info_gain[i] = ig
-            print(ig)
-            print("*****")
+            info_gain[i] = self.calculate_net_info_gain(prob_dist_before_hint, prob_dist_after_hint, target)
             
         best = np.argmax(info_gain)
         return (possible_hints[best], info_gain[best])
@@ -1436,7 +1461,7 @@ class ProbabilisticPlayer (Player):
         
         post_hint_knowledge[matching_number_indexes] = 0 
         post_hint_knowledge[matching_number_indexes, :, num - 1] = knowledge[matching_number_indexes, :, num -1]
-        post_hint_knowledge[~matching_number_indexes, :, num] = 0
+        post_hint_knowledge[~matching_number_indexes, :, num - 1] = 0
         
         return post_hint_knowledge 
     
