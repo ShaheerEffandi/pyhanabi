@@ -1322,7 +1322,6 @@ class ProbabilisticPlayer (Player):
             
             return Action(PLAY, cnr=np.random.choice(possible_cards_to_play))
         
-        print(board)
         if hints > 1:
             op_playable = self.get_opponents_playable_cards(hands)
             best_hint = None
@@ -1334,13 +1333,9 @@ class ProbabilisticPlayer (Player):
                     if best_hint is None or eig > expected_information_gain:
                         best_hint = hint
                         expected_information_gain = eig
-                
-                
+                                
                 if expected_information_gain > 0: #If we have all the infomration about playable cards hinted already, but we draw a new unplayable card, it probably would not be helpful to give information on the non-playable cards. so we might elect to do something different on our turn.  
-                    print("best hint")
                     return best_hint
-            
-
             
             best_hint = None
             expected_information_gain = 0
@@ -1376,32 +1371,23 @@ class ProbabilisticPlayer (Player):
         card_counts = Counter(used_cards)
         used = dict(card_counts)
         return np.array(update_knowledge(hand_knowledge, used))
+
+    def get_opponents_cards(self, hands, condition):
     
-    def get_opponents_playable_cards(self, hands):
-            op_playable = {} #dictionary that store for each player, which of their cards are playable
-            for pnr, hand in enumerate(hands):
+        op_cards = {}
+        for pnr, hand in enumerate(hands):
                 if pnr == self.pnr:
                     continue
+                op_cards[pnr] = [cnr for cnr, (col, rank) in enumerate(hand) if condition(col, rank)]
                 
-                op_playable[pnr] = []
-                for cnr, (col, rank) in enumerate(hand):
-                    card = [col, rank - 1]
-                    if card in self.playable_cards:
-                        op_playable[pnr].append(cnr)
-            
-            return op_playable
         
-    def get_opponents_discardable_cards(self, board, hands):
-            op_discardable = {} #dictionary that store for each player, which of their cards are discardable
-            for pnr, hand in enumerate(hands):
-                if pnr == self.pnr:
-                    continue
-                op_discardable[pnr] = []
-                for cnr, (col, rank) in enumerate(hand):
-                    if board[col][1] >= rank:
-                        op_discardable[pnr].append(cnr)
-            
-            return op_discardable
+        return op_cards
+
+    def get_opponents_playable_cards(self, hands):
+        return self.get_opponents_cards(hands, lambda col, rank: [col, rank - 1] in self.playable_cards)
+
+    def get_opponents_discardable_cards(self, hands, board):
+        return self.get_opponents_cards(hands, lambda col, rank: board[col][1] >= rank)
 
     def entropy(self, probability_distribution):
         probability_distribution = probability_distribution[probability_distribution > 0]
