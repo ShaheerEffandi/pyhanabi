@@ -1304,10 +1304,9 @@ class ProbabilisticPlayer (Player):
        
         # knowledge already filters out based on hints given, we want to further filter out by removing any cards we know it cannot be
         # i.e. cards in the opponents hand, cards already played, and cards in the trash
-
+        print(trash)
         updated_hand_knowledge = self.update_hand_knowledge(knowledge[nr], trash, played, hands)
         self.update_playable_cards(board)
-        print(played)
         playable_cards = self.get_target_cards_filter(self.playable_cards)
         #possible play actions
         possible_cards_to_play = []
@@ -1364,19 +1363,14 @@ class ProbabilisticPlayer (Player):
         #   already been discarded, making that card unplayable - this logic can also be added to the hint discardable
 
         played_cards = [(col, num - 1) for (col, num) in played]
-        print(played_cards)
         card_to_discard = None
         prob_of_discardable = 0 
         discardable_cards = self.get_target_cards_filter(played_cards)
-        print("discard")
-        print(discardable_cards)
+        
         for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
             total_number_of_possible_cards = np.sum(card)
             probabilities = card.copy()/total_number_of_possible_cards
-            pd_d = probabilities[discardable_cards]
-            print(pd_d)
             probability_of_discardable = np.sum(probabilities[discardable_cards])
-            print(f"{card}: {probability_of_discardable}")
             if card_to_discard is None or probability_of_discardable > prob_of_discardable:
                 card_to_discard = i
                 prob_of_discardable = probability_of_discardable
@@ -1513,7 +1507,14 @@ class ProbabilisticPlayer (Player):
         
         return (lamda_weight * info_gain_targets - (1-lamda_weight) *info_gain_targets)
     
+    def get_necessary_cards(self, board):
+        return [(col, i) for (col, rank) in board for i in range(rank + 1, 5)]
     
+    def get_unnecessary_cards(self, played, trash):
+        pass
+    #implement here
+
+    # def card_utility_function(self, card):
 
     def inform(self, action, player, game):
         self.hits = game.hits
