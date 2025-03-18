@@ -1307,22 +1307,23 @@ class ProbabilisticPlayer (Player):
 
         updated_hand_knowledge = self.update_hand_knowledge(knowledge[nr], trash, played, hands)
         self.update_playable_cards(board)
-        
+        print(played)
+        playable_cards = self.get_target_cards_filter(self.playable_cards)
         #possible play actions
         possible_cards_to_play = []
         for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
             total_number_of_possible_cards = np.sum(card)
             probabilities = card.copy()/total_number_of_possible_cards
-            probabilities_of_playable = probabilities[self.get_playable_cards()]
+            probability_of_playable = np.sum(probabilities[playable_cards])
             
-            if np.sum(probabilities_of_playable) > self.probability_threshold[self.hits]:
+            if probability_of_playable > self.probability_threshold[self.hits]:
                 possible_cards_to_play.append(i)
         
         if len(possible_cards_to_play) > 0:
             
             return Action(PLAY, cnr=np.random.choice(possible_cards_to_play))
         
-        if hints > 1:
+        if hints > 0:
             #hinting at playable cards if there is a hint worth giving
             op_playable = self.get_opponents_playable_cards(hands)
             best_hint = self.get_best_hint_for_all_opponent(
@@ -1356,16 +1357,43 @@ class ProbabilisticPlayer (Player):
             if best_hint is not None:
                 return best_hint
             
+            
+        #We want to find out which cards in our hands are discardable, there are 2 reasons why a card may be discardable:
+        #   1. that card has already been played on the board which means that it is no longer needed
+        #   2. for that color, one or more card that bridges the gap between the current card on the board and that card in hand have
+        #   already been discarded, making that card unplayable - this logic can also be added to the hint discardable
 
-        return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
+        played_cards = [(col, num - 1) for (col, num) in played]
+        print(played_cards)
+        card_to_discard = None
+        prob_of_discardable = 0 
+        discardable_cards = self.get_target_cards_filter(played_cards)
+        print("discard")
+        print(discardable_cards)
+        for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
+            total_number_of_possible_cards = np.sum(card)
+            probabilities = card.copy()/total_number_of_possible_cards
+            pd_d = probabilities[discardable_cards]
+            print(pd_d)
+            probability_of_discardable = np.sum(probabilities[discardable_cards])
+            print(f"{card}: {probability_of_discardable}")
+            if card_to_discard is None or probability_of_discardable > prob_of_discardable:
+                card_to_discard = i
+                prob_of_discardable = probability_of_discardable
+        
+        
+            
+        return Action(DISCARD, cnr=card_to_discard)
+
+        #return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
 
               
     def update_playable_cards(self, board):
         for i, (col, num) in enumerate(board):
             self.playable_cards[i] = [col, 4] if num == 5 else [col, num] #this is to store which cards are playable as indexes for a numpy array. if a stack of colours is complete, then we simply keep the playable as [col, 4] since that would refer to a card with (col, 5) because of 0-indexing. and since there is only 1 copy of each (col, 5), it should theoretically never cause a problem. 
     
-    def get_playable_cards(self):
-        col_ind, rank_ind = zip(*self.playable_cards)
+    def get_target_cards_filter(self, target_cards):
+        col_ind, rank_ind = zip(*target_cards)
         return col_ind, rank_ind    
     
     def update_hand_knowledge(self, hand_knowledge, trash, played, hands):
@@ -1485,6 +1513,8 @@ class ProbabilisticPlayer (Player):
         
         return (lamda_weight * info_gain_targets - (1-lamda_weight) *info_gain_targets)
     
+    
+
     def inform(self, action, player, game):
         self.hits = game.hits
         if action.type in [PLAY, DISCARD]:
