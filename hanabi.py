@@ -1304,7 +1304,7 @@ class ProbabilisticPlayer (Player):
        
         # knowledge already filters out based on hints given, we want to further filter out by removing any cards we know it cannot be
         # i.e. cards in the opponents hand, cards already played, and cards in the trash
-        print(trash)
+        print(hands)
         updated_hand_knowledge = self.update_hand_knowledge(knowledge[nr], trash, played, hands)
         self.update_playable_cards(board)
         playable_cards = self.get_target_cards_filter(self.playable_cards)
@@ -1331,7 +1331,6 @@ class ProbabilisticPlayer (Player):
                 knowledge=knowledge
             )
             if best_hint is not None:
-                print(best_hint)
                 return best_hint
             
             #hinting at discardable cards if there is a hint worth giving
@@ -1362,19 +1361,28 @@ class ProbabilisticPlayer (Player):
         #   2. for that color, one or more card that bridges the gap between the current card on the board and that card in hand have
         #   already been discarded, making that card unplayable - this logic can also be added to the hint discardable
 
-        played_cards = np.array([(col, num - 1) for (col, num) in played])
-        unusable_cards = self.get_unusable_cards(self.get_usable_cards(board), played, trash)  #substract 1 from the second value so that the number aligns with 0 indexing
+
+        played_cards = np.array([(col, num - 1) for (col, num) in played]).reshape(-1, 2) #While unlikely to be necessary, this ensures that if the list is empty, it will still be treated as an np.array of the correct shape(N rows, each with 2 columns representing colour, rank)
+        usable_cards = self.get_usable_cards(board)
+        unusable_cards = self.get_unusable_cards(usable_cards, played, trash)  #substract 1 from the second value so that the number aligns with 0 indexing
         unusable_cards[:, 1] -= 1
-        targets_to_discard = np.concatenate((played_cards, unusable_cards))
-        card_to_discard = None
+        targets_to_discard = np.vstack((played_cards, unusable_cards))    
+        print("TTD")
+        print(targets_to_discard)
+        
+        card_to_discard = 0 #as a default value but as long as there is a card which has a higher chance of being discardable, it will be replaced by that value 
         prob_of_discardable = 0 
         discardable_cards = self.get_target_cards_filter(targets_to_discard)
         
-        for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
+        for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire by number of total possible cards
             total_number_of_possible_cards = np.sum(card)
-            probabilities = card.copy()/total_number_of_possible_cards
+            if total_number_of_possible_cards > 0:
+                probabilities = card.copy()/total_number_of_possible_cards
+            else:
+                probabilities = np.zeros_like(card)
+
             probability_of_discardable = np.sum(probabilities[discardable_cards])
-            if card_to_discard is None or probability_of_discardable > prob_of_discardable:
+            if probability_of_discardable >= prob_of_discardable:
                 card_to_discard = i
                 prob_of_discardable = probability_of_discardable
         
@@ -1384,7 +1392,7 @@ class ProbabilisticPlayer (Player):
 
         #return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
 
-              
+
     def update_playable_cards(self, board):
         for i, (col, num) in enumerate(board):
             self.playable_cards[i] = [col, 4] if num == 5 else [col, num] #this is to store which cards are playable as indexes for a numpy array. if a stack of colours is complete, then we simply keep the playable as [col, 4] since that would refer to a card with (col, 5) because of 0-indexing. and since there is only 1 copy of each (col, 5), it should theoretically never cause a problem. 
@@ -1511,24 +1519,41 @@ class ProbabilisticPlayer (Player):
         return (lamda_weight * info_gain_targets - (1-lamda_weight) *info_gain_targets)
     
     #I will refer to usable as a card which still can be played at some point in the game. For example:
-    #    if the board is [1,4,5,2,1] then although the card (0,3) isn't playable just yet, it will still have use  
+    #    if the board is [1,4,5,2,1] then although the card (0,3) isn't playable just yet, it will still have use  NOTE: This function does not include return cards that are immediately playable
     def get_usable_cards(self, board):
-        return np.array([(col, i) for (col, rank) in board for i in range(rank + 1, 5)])
-    
-    def get_unusable_cards(self, usable, played, trash):
-        unique, count = np.unique(np.array(played + trash), return_counts=True, axis=0)
-        total_card_count = np.array([COUNTS[card[1] - 1] for card in unique])
-        count_of_cards_left_in_deck_or_hand = total_card_count - count
-        unusable_mask = np.isin(usable, unique[count_of_cards_left_in_deck_or_hand == 0], assume_unique=True)
-        unusable = usable[unusable_mask]
-        ube_mask=np.zeros(len(usable), dtype=bool)
-        
-        for (col, num) in unusable:
-            ube_mask |= (usable[:, 0] == col) & (usable[:, 1] > num)
+        return np.array([(col, i) for (col, rank) in board for i in range(rank + 1, 6)])
 
-        unusable_by_extension = usable[ube_mask]
-        return np.concatenate((unusable, unusable_by_extension))
-    
+    def get_unusable_cards(self, usable, played, trash):
+        unique_used, count_used = np.unique(np.array(played + trash), return_counts=True, axis=0)
+        total_card_count = np.array([COUNTS[card[1] - 1] for card in unique_used])
+        count_of_cards_left_in_deck_or_hand = total_card_count - count_used
+        if np.any(count_of_cards_left_in_deck_or_hand == 0):
+            none_left_in_deck = unique_used[count_of_cards_left_in_deck_or_hand == 0] 
+            unusable_mask = np.isin(usable[:, 0], none_left_in_deck[:, 0]) & np.isin(usable[:, 1], none_left_in_deck[:, 1])
+            unusable = usable[unusable_mask]
+            ube_mask=np.zeros(len(usable), dtype=bool)
+            for (col, num) in unusable:
+                
+                ube_mask |= (usable[:, 0] == col) & (usable[:, 1] > num)
+            unusable_by_extension = usable[ube_mask]
+            return np.vstack((unusable, unusable_by_extension))
+        else: 
+            return np.empty((0,2), dtype=usable.dtype)    
+            
+    """
+        So basically: (func redesign)
+            - I want to find good cards to discards
+            - to do this, i need to know which cards are usable -> do i include which cards are immediately playable?
+            - i also need the cards that have been played or in the trash -> do i want to include my opponents hand into the calculation? -> if yes, then this may interfere with the calculation, -> if my opponent has the last blue 4, i don't want to risk discarding the last blue 5 -> if no, then idk 
+            - i combine these used cards into a list and subtract each card from its total count for that card
+            - if there is a card with 0 left in deck:
+                - find which cards have none left in deck -> since there are none left in deck, they cannot be played -> this would be a reason not to include the opponents cards
+                - then for each unusable card, get all the cards that have a higher rank for that colour. Since those are the cards that are no longer playable throughout the duration of the game
+                - return these cards. 
+            - else:
+                return np.empry((0,2), dtype=usable.dtype)
+
+    """
 
         
         
