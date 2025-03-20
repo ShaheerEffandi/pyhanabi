@@ -1523,23 +1523,7 @@ class ProbabilisticPlayer (Player):
     def get_usable_cards(self, board):
         return np.array([(col, i) for (col, rank) in board for i in range(rank + 1, 6)])
 
-    def get_unusable_cards(self, usable, played, trash):
-        unique_used, count_used = np.unique(np.array(played + trash), return_counts=True, axis=0)
-        total_card_count = np.array([COUNTS[card[1] - 1] for card in unique_used])
-        count_of_cards_left_in_deck_or_hand = total_card_count - count_used
-        if np.any(count_of_cards_left_in_deck_or_hand == 0):
-            none_left_in_deck = unique_used[count_of_cards_left_in_deck_or_hand == 0] 
-            unusable_mask = np.isin(usable[:, 0], none_left_in_deck[:, 0]) & np.isin(usable[:, 1], none_left_in_deck[:, 1])
-            unusable = usable[unusable_mask]
-            ube_mask=np.zeros(len(usable), dtype=bool)
-            for (col, num) in unusable:
-                
-                ube_mask |= (usable[:, 0] == col) & (usable[:, 1] > num)
-            unusable_by_extension = usable[ube_mask]
-            return np.vstack((unusable, unusable_by_extension))
-        else: 
-            return np.empty((0,2), dtype=usable.dtype)    
-            
+
     """
         So basically: (func redesign)
             - I want to find good cards to discards
@@ -1555,6 +1539,27 @@ class ProbabilisticPlayer (Player):
 
     """
 
+    def get_unusable_cards(self, trash):
+        all_cards = np.array([(col, num) for col in ALL_COLORS for num in range(1, len(COUNTS) + 1)])
+        unique_cards, count_cards = np.unique(trash, return_counts=True, axis=0)
+        
+        count_cards_left = np.array([COUNTS[num - 1] for (_, num) in unique_cards]) - count_cards
+        none_left_in_deck = unique_cards[count_cards_left == 0]
+        if len(none_left_in_deck) == 0:
+            return np.empty((0,2), dtype=unique_cards.dtype)
+        
+        unusable_by_extension_mask = np.any(
+            (all_cards[:, None, 0] == none_left_in_deck[:, 0]) &
+            (all_cards[:, None, 1] > none_left_in_deck[:, 1]),
+            axis=1
+        )
+        
+        return all_cards[unusable_by_extension_mask]
+        
+            
+                    
+                
+        
         
         
     #implement here
