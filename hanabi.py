@@ -1270,7 +1270,7 @@ def format_hand(hand):
     
 
 class ProbabilisticPlayer (Player):
-    def __init__(self, name, pnr):
+    def __init__(self, name, pnr, w_p=0.3, w_i=0.3, w_u=0.5):
         self.name = name
         self.hints = {}
         self.pnr = pnr
@@ -1280,12 +1280,18 @@ class ProbabilisticPlayer (Player):
         self.last_board = [(c, 0) for c in ALL_COLORS]
         self.playable_cards = [[col, 0] for col in ALL_COLORS]
         self.hits = 3
-        self.game=None
+        
         self.probability_threshold = { #dictionary of {number_of_hits_left: minimum_probability} ~ if we want to play a card we need to be at least mp sure that it is correct
             3: 0.65,
             2: 0.8,
             1: 0.9
         }
+        
+        self.w_playable = w_p
+        self.w_important = w_i
+        self.w_unusable = w_u
+        
+        self.greedy = 0.8 #The probability of the AI being greedy with last hint
 
     """
         How do i want this to work - 
@@ -1309,18 +1315,22 @@ class ProbabilisticPlayer (Player):
         self.update_playable_cards(board)
         playable_cards = self.get_target_cards_filter(self.playable_cards)
         #possible play actions
-        possible_cards_to_play = []
+        card_to_play = -1
+        p_playable = 0
         for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
             total_number_of_possible_cards = np.sum(card)
+            if total_number_of_possible_cards == 0:
+                raise ValueError(f"Invalid state: there are no possible values for card {i + 1}. This suggests an error in hand knowledge representation")
+
             probabilities = card.copy()/total_number_of_possible_cards
             probability_of_playable = np.sum(probabilities[playable_cards])
             
-            if probability_of_playable > self.probability_threshold[self.hits]:
-                possible_cards_to_play.append(i)
+            if probability_of_playable > p_playable and probability_of_playable > self.probability_threshold[self.hits]:
+                card_to_play = i
+                p_playable = probability_of_playable
         
-        if len(possible_cards_to_play) > 0:
-            
-            return Action(PLAY, cnr=np.random.choice(possible_cards_to_play))
+        if card_to_play > -1:
+            return Action(PLAY, cnr=card_to_play)
         
         if hints > 0:
             #hinting at playable cards if there is a hint worth giving
@@ -1334,7 +1344,10 @@ class ProbabilisticPlayer (Player):
                 return best_hint
             
             #hinting at discardable cards if there is a hint worth giving
-            op_discardable = self.get_opponents_discardable_cards(hands=hands, board=board)
+            usable_cards = self.get_usable_cards(board)
+            unusable_cards = self.get_unusable_cards(usable_cards ,trash)
+            
+            op_discardable = self.get_opponents_discardable_cards(hands=hands, board=board, unusable=unusable_cards)
             best_hint = self.get_best_hint_for_all_opponent(
                 target_cards=op_discardable,
                 hands=hands, 
@@ -1344,54 +1357,46 @@ class ProbabilisticPlayer (Player):
             if best_hint is not None:
                 return best_hint
             
-            #giving the hint that gives the most information
-            op_cards = self.get_opponents_all_cards(hands=hands)
-            best_hint = self.get_best_hint_for_all_opponent(
-                target_cards=op_cards,
-                hands=hands,
-                knowledge=knowledge,
-            )
-
+            #Change hint highest information if the hints == 1 so that theres a chance it doesn't hint and instead chooses to discard.
+            
+            if hints == 1:
+                if  np.random.rand() <= self.greedy:
+                    
+                    self.greedy *= 0.8
+                    best_hint = self.hint_highest_info(hands, knowledge)
+                else:
+                    self.greedy = 0.8
+                    best_hint = None
+            else:
+                best_hint = self.hint_highest_info(hands, knowledge)
             if best_hint is not None:
-                return best_hint
+                return best_hint    
             
-            
-        #We want to find out which cards in our hands are discardable, there are 2 reasons why a card may be discardable:
-        #   1. that card has already been played on the board which means that it is no longer needed
-        #   2. for that color, one or more card that bridges the gap between the current card on the board and that card in hand have
-        #   already been discarded, making that card unplayable - this logic can also be added to the hint discardable
-
-
         played_cards = np.array([(col, num - 1) for (col, num) in played], dtype=int).reshape(-1, 2) #While unlikely to be necessary, this ensures that if the list is empty, it will still be treated as an np.array of the correct shape(N rows, each with 2 columns representing colour, rank)
 
-        usable_cards = self.get_usable_cards(board)
-        unusable_cards = self.get_unusable_cards(usable_cards ,trash)#substract 1 from the second value so that the number aligns with 0 indexing
+        
+        #substract 1 from the second value so that the number aligns with 0 indexing
         unusable_cards[:, 1] -= 1
-        targets_to_discard = np.vstack((played_cards, unusable_cards))    
+        targets_to_discard = np.vstack((played_cards, unusable_cards)) #We can freely discard played cards since there is no stack to place them on
         
-        card_to_discard = 0 #as a default value but as long as there is a card which has a higher chance of being discardable, it will be replaced by that value 
-        prob_of_discardable = 0 
-        discardable_cards = self.get_target_cards_filter(targets_to_discard)
-
-        for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire by number of total possible cards
-            total_number_of_possible_cards = np.sum(card)
-            if total_number_of_possible_cards > 0:
-                probabilities = card.copy()/total_number_of_possible_cards
-            else:
-                probabilities = np.zeros_like(card)
-
-            probability_of_discardable = np.sum(probabilities[discardable_cards])
-            if probability_of_discardable >= prob_of_discardable:
-                card_to_discard = i
-                prob_of_discardable = probability_of_discardable
+        important_cards = self.get_important_cards(usable_cards, trash)
+        important_cards[:, 1] -= 1
         
-        
+        card_to_discard = self.find_lowest_utility_card(hand_knowledge=updated_hand_knowledge, 
+                                                        playable_cards=self.playable_cards, 
+                                                        important_cards=important_cards, 
+                                                        unusable_cards=targets_to_discard)
             
         return Action(DISCARD, cnr=card_to_discard)
 
-        #return super().get_action(nr, hands, knowledge, trash, played, board, valid_actions, hints)
-
-
+    def hint_highest_info(self, hands, knowledge):
+        op_cards = self.get_opponents_all_cards(hands=hands)
+        return self.get_best_hint_for_all_opponent(
+            target_cards=op_cards,
+            hands=hands,
+            knowledge=knowledge,
+        )
+        
     def update_playable_cards(self, board):
         for i, (col, num) in enumerate(board):
             self.playable_cards[i] = [col, 4] if num == 5 else [col, num] #this is to store which cards are playable as indexes for a numpy array. if a stack of colours is complete, then we simply keep the playable as [col, 4] since that would refer to a card with (col, 5) because of 0-indexing. and since there is only 1 copy of each (col, 5), it should theoretically never cause a problem. 
@@ -1410,7 +1415,6 @@ class ProbabilisticPlayer (Player):
         best_hint = None
         expected_information_gain = 0
         
-        #A possible addition to the discardable cards is taking into consideration if the card in the opponents hand cannot be played as all the cards for the colour to progress are in the trash
         if any(len(card) for card in target_cards.values()):
     
             for pnr, target in target_cards.items():
@@ -1438,8 +1442,8 @@ class ProbabilisticPlayer (Player):
     def get_opponents_playable_cards(self, hands):
         return self.get_opponents_cards(hands, lambda col, rank: [col, rank - 1] in self.playable_cards)
 
-    def get_opponents_discardable_cards(self, hands, board):
-        return self.get_opponents_cards(hands, lambda col, rank: board[col][1] >= rank)
+    def get_opponents_discardable_cards(self, hands, board, unusable):
+        return self.get_opponents_cards(hands, lambda col, rank: board[col][1] >= rank or np.any(np.all(unusable == (col, rank), axis=1)))
 
     def get_opponents_all_cards(self, hands):
         return self.get_opponents_cards(hands, lambda col, rank: True)
@@ -1464,8 +1468,6 @@ class ProbabilisticPlayer (Player):
             knowledge_after_hint = self.simulate_hint(hand, knowledge, hint)
             prob_dist_after_hint = self.calculate_prob_dist(knowledge_after_hint)
 
-            
-            
             info_gain[i] = self.calculate_net_info_gain(prob_dist_before_hint, prob_dist_after_hint, target)
             
         best = np.argmax(info_gain)
@@ -1476,9 +1478,7 @@ class ProbabilisticPlayer (Player):
             card_dist/np.sum(card_dist) if np.sum(card_dist) > 0 else np.zeros_like(card_dist) 
             for card_dist in knowledge
             ])
-        
-        
-        
+                
     def simulate_hint(self, hand, knowledge, hint):
         if hint.type == HINT_COLOR:
             return self.simulate_colour_hint(hand, knowledge, hint.col) #continue from here 
@@ -1518,7 +1518,7 @@ class ProbabilisticPlayer (Player):
         return (lamda_weight * info_gain_targets - (1-lamda_weight) *info_gain_targets)
     
     #I will refer to usable as a card which still can be played at some point in the game. For example:
-    #if the board is [1,4,5,2,1] then although the card (0,3) isn't playable just yet, it will still have use  NOTE: This function does not include return cards that are immediately playable
+    #if the board is [1,4,5,2,1] then although the card (0,3) isn't playable just yet, it will still have use 
     def get_usable_cards(self, board):
         return np.array([(col, i) for (col, rank) in board for i in range(rank + 1, 6)], dtype=int)
 
@@ -1537,11 +1537,45 @@ class ProbabilisticPlayer (Player):
             (usable[:, None, 1] > none_left_in_deck[:, 1]),
             axis=1
         )
-    
         return usable[unusable_by_extension_mask]
     
-    #implement here
+    def get_important_cards(self, usable, trash):
+        # if len(trash) == 0: #SO this ends if trash == 0, but this is an error since our rank 5s all only have 1 copy in deck
+        #     #so regardless as long as they aren't played or discarded, they should be considered important
+        #     return np.empty((0,2), dtype= int)
+        
+        count_cards_left = np.array([COUNTS[num - 1] for (_, num) in usable])
+        if len(trash) > 0:
+            unique_cards, count_cards = np.unique(trash, return_counts=True, axis=0)           
+            for i, card in enumerate(usable):
+                index_match = np.where((unique_cards == card).all(axis=1))[0]
+                if index_match.size > 0:
+                    count_cards_left[i] -= count_cards[index_match[0]]
+        
+        return usable[count_cards_left == 1]
 
+    def find_lowest_utility_card(self, hand_knowledge, playable_cards, important_cards, unusable_cards):
+        hand_utilities = np.zeros(len(hand_knowledge)) 
+        for i, card in enumerate(hand_knowledge):
+            uv = self.find_utility_value(card, playable_cards, important_cards, unusable_cards, i)
+            hand_utilities[i] = uv
+        
+        return np.argmin(hand_utilities)
+    
+    def find_utility_value(self, card, playable_cards, important_cards, unusable_cards, ind):
+        number_of_possibilities = np.sum(card)
+        if number_of_possibilities == 0:
+            raise ValueError(f"Invalid state: there are no possible values for card {i + 1}. This suggests an error in hand knowledge representation")
+        
+        probabilities = card.copy()/number_of_possibilities
+        p_c = self.get_target_cards_filter(playable_cards)
+        i_c = self.get_target_cards_filter(important_cards)
+        u_c = self.get_target_cards_filter(unusable_cards)
+        
+        return np.sum(probabilities[p_c]) * self.w_playable + np.sum(probabilities[i_c]) * self.w_important - np.sum(probabilities[u_c]) * self.w_unusable  
+        
+        
+        
     # def card_utility_function(self, card):
 
     def inform(self, action, player, game):
