@@ -1282,9 +1282,9 @@ class ProbabilisticPlayer (Player):
         self.hits = 3
         
         self.probability_threshold = { #dictionary of {number_of_hits_left: minimum_probability} ~ if we want to play a card we need to be at least mp sure that it is correct
-            3: 0.65,
-            2: 0.8,
-            1: 0.9
+            3: 0.5,
+            2: 0.6,
+            1: 0.9,
         }
         
         self.w_playable = w_p
@@ -1343,7 +1343,7 @@ class ProbabilisticPlayer (Player):
             if best_hint is not None:
                 return best_hint
             
-            #hinting at discardable cards if there is a hint worth giving
+            # #hinting at discardable cards if there is a hint worth giving
             usable_cards = self.get_usable_cards(board)
             unusable_cards = self.get_unusable_cards(usable_cards ,trash)
             
@@ -1353,7 +1353,18 @@ class ProbabilisticPlayer (Player):
                 hands=hands, 
                 knowledge=knowledge
                 )
-            
+
+            if best_hint is not None:
+                return best_hint
+
+            important_cards = self.get_important_cards(usable_cards, unusable_cards, trash)
+            op_important = self.get_opponents_important_cards(hands=hands, important_cards=important_cards)
+            best_hint = self.get_best_hint_for_all_opponent(
+                target_cards=op_important,
+                hands=hands,
+                knowledge=knowledge
+            )
+
             if best_hint is not None:
                 return best_hint
             
@@ -1447,6 +1458,11 @@ class ProbabilisticPlayer (Player):
 
     def get_opponents_all_cards(self, hands):
         return self.get_opponents_cards(hands, lambda col, rank: True)
+    
+    def get_opponents_important_cards(self, hands, important_cards):
+        return self.get_opponents_cards(hands, lambda col, rank: np.any(np.all(important_cards == (col, rank), axis= 1)))
+    
+
 
     def entropy(self, probability_distribution):
         probability_distribution = probability_distribution[probability_distribution > 0]
@@ -1481,8 +1497,7 @@ class ProbabilisticPlayer (Player):
                 
     def simulate_hint(self, hand, knowledge, hint):
         if hint.type == HINT_COLOR:
-            return self.simulate_colour_hint(hand, knowledge, hint.col) #continue from here 
-            #need to create the probability distribution from the knowledge = knowledge / sum of knowledge for each card in hand.
+            return self.simulate_colour_hint(hand, knowledge, hint.col)
         else:
             return self.simulate_rank_hint(hand, knowledge, hint.num)
     
@@ -1539,10 +1554,14 @@ class ProbabilisticPlayer (Player):
         )
         return usable[unusable_by_extension_mask]
     
-    def get_important_cards(self, usable, trash):
-        # if len(trash) == 0: #SO this ends if trash == 0, but this is an error since our rank 5s all only have 1 copy in deck
-        #     #so regardless as long as they aren't played or discarded, they should be considered important
-        #     return np.empty((0,2), dtype= int)
+    def remove_unusable_from_usable(self, usable, unusable):
+        usable_set = {tuple(card) for card in usable}
+        unusable_set = {tuple(card) for card in unusable}
+        set_diff = usable_set - unusable_set
+        return np.array([list(card) for card in set_diff]) if set_diff else np.empty((0, usable.shape[1]))
+
+    def get_important_cards(self, usable, unusable, trash):
+        usable =  self.remove_unusable_from_usable(usable, unusable)#a card isn't considered important if they are cannot be played at all even if there is only 1 of it left.
         
         count_cards_left = np.array([COUNTS[num - 1] for (_, num) in usable])
         if len(trash) > 0:
@@ -1565,7 +1584,7 @@ class ProbabilisticPlayer (Player):
     def find_utility_value(self, card, playable_cards, important_cards, unusable_cards, ind):
         number_of_possibilities = np.sum(card)
         if number_of_possibilities == 0:
-            raise ValueError(f"Invalid state: there are no possible values for card {i + 1}. This suggests an error in hand knowledge representation")
+            raise ValueError(f"Invalid state: there are no possible values for card {ind + 1}. This suggests an error in hand knowledge representation")
         
         probabilities = card.copy()/number_of_possibilities
         p_c = self.get_target_cards_filter(playable_cards)
@@ -1576,7 +1595,6 @@ class ProbabilisticPlayer (Player):
         
         
         
-    # def card_utility_function(self, card):
 
     def inform(self, action, player, game):
         self.hits = game.hits
