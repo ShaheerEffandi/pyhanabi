@@ -1314,83 +1314,26 @@ class ProbabilisticPlayer (Player):
         updated_hand_knowledge = self.update_hand_knowledge(knowledge[nr], trash, played, hands)
         self.update_playable_cards(board)
         playable_cards = self.get_target_cards_filter(self.playable_cards)
+    
         #possible play actions
-        card_to_play = -1
-        p_playable = 0
-        for i, card in enumerate(updated_hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
-            total_number_of_possible_cards = np.sum(card)
-            if total_number_of_possible_cards == 0:
-                raise ValueError(f"Invalid state: there are no possible values for card {i + 1}. This suggests an error in hand knowledge representation")
-
-            probabilities = card.copy()/total_number_of_possible_cards
-            probability_of_playable = np.sum(probabilities[playable_cards])
-            
-            if probability_of_playable > p_playable and probability_of_playable > self.probability_threshold[self.hits]:
-                card_to_play = i
-                p_playable = probability_of_playable
-        
+        card_to_play = self.card_to_play(updated_hand_knowledge, playable_cards)
         if card_to_play > -1:
             return Action(PLAY, cnr=card_to_play)
-        
+
+        usable_cards = self.get_usable_cards(board)
+        unusable_cards = self.get_unusable_cards(usable_cards, trash)
+        important_cards = self.get_important_cards(usable_cards, unusable_cards, trash)
+           
         if hints > 0:
-            #hinting at playable cards if there is a hint worth giving
-            op_playable = self.get_opponents_playable_cards(hands)
-            best_hint = self.get_best_hint_for_all_opponent(
-                target_cards=op_playable,
-                hands = hands,
-                knowledge=knowledge
-            )
-            if best_hint is not None:
-                return best_hint
-            
-            # #hinting at discardable cards if there is a hint worth giving
-            usable_cards = self.get_usable_cards(board)
-            unusable_cards = self.get_unusable_cards(usable_cards ,trash)
-            
-            op_discardable = self.get_opponents_discardable_cards(hands=hands, board=board, unusable=unusable_cards)
-            best_hint = self.get_best_hint_for_all_opponent(
-                target_cards=op_discardable,
-                hands=hands, 
-                knowledge=knowledge
-                )
-
-            if best_hint is not None:
-                return best_hint
-
-            important_cards = self.get_important_cards(usable_cards, unusable_cards, trash)
-            op_important = self.get_opponents_important_cards(hands=hands, important_cards=important_cards)
-            best_hint = self.get_best_hint_for_all_opponent(
-                target_cards=op_important,
-                hands=hands,
-                knowledge=knowledge
-            )
-
-            if best_hint is not None:
-                return best_hint
-            
-            #Change hint highest information if the hints == 1 so that theres a chance it doesn't hint and instead chooses to discard.
-            
-            if hints == 1:
-                if  np.random.rand() <= self.greedy:
-                    
-                    self.greedy *= 0.8
-                    best_hint = self.hint_highest_info(hands, knowledge)
-                else:
-                    self.greedy = 0.8
-                    best_hint = None
-            else:
-                best_hint = self.hint_highest_info(hands, knowledge)
-            if best_hint is not None:
-                return best_hint    
-            
-        played_cards = np.array([(col, num - 1) for (col, num) in played], dtype=int).reshape(-1, 2) #While unlikely to be necessary, this ensures that if the list is empty, it will still be treated as an np.array of the correct shape(N rows, each with 2 columns representing colour, rank)
-
-        
+            for hint in self.card_to_hint(hints, hands, knowledge, board, unusable_cards, important_cards):
+                if hint is not None:
+                    return hint
+                       
         #substract 1 from the second value so that the number aligns with 0 indexing
+        played_cards = np.array([(col, num - 1) for (col, num) in played], dtype=int).reshape(-1, 2) #While unlikely to be necessary, this ensures that if the list is empty, it will still be treated as an np.array of the correct shape(N rows, each with 2 columns representing colour, rank)       
         unusable_cards[:, 1] -= 1
         targets_to_discard = np.vstack((played_cards, unusable_cards)) #We can freely discard played cards since there is no stack to place them on
-        
-        important_cards = self.get_important_cards(usable_cards, trash)
+
         important_cards[:, 1] -= 1
         
         card_to_discard = self.find_lowest_utility_card(hand_knowledge=updated_hand_knowledge, 
@@ -1400,14 +1343,6 @@ class ProbabilisticPlayer (Player):
             
         return Action(DISCARD, cnr=card_to_discard)
 
-    def hint_highest_info(self, hands, knowledge):
-        op_cards = self.get_opponents_all_cards(hands=hands)
-        return self.get_best_hint_for_all_opponent(
-            target_cards=op_cards,
-            hands=hands,
-            knowledge=knowledge,
-        )
-        
     def update_playable_cards(self, board):
         for i, (col, num) in enumerate(board):
             self.playable_cards[i] = [col, 4] if num == 5 else [col, num] #this is to store which cards are playable as indexes for a numpy array. if a stack of colours is complete, then we simply keep the playable as [col, 4] since that would refer to a card with (col, 5) because of 0-indexing. and since there is only 1 copy of each (col, 5), it should theoretically never cause a problem. 
@@ -1421,6 +1356,79 @@ class ProbabilisticPlayer (Player):
         card_counts = Counter(used_cards)
         used = dict(card_counts)
         return np.array(update_knowledge(hand_knowledge, used))
+
+    def card_to_play(self, hand_knowledge, playable):
+        card_to_play = -1
+        p_playable = 0
+        for i, card in enumerate(hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
+            total_number_of_possible_cards = np.sum(card)
+            if total_number_of_possible_cards == 0:
+                raise ValueError(f"Invalid state: there are no possible values for card {i + 1}. This suggests an error in hand knowledge representation")
+
+            probabilities = card.copy()/total_number_of_possible_cards
+            probability_of_playable = np.sum(probabilities[playable])
+            
+            if probability_of_playable > p_playable and probability_of_playable > self.probability_threshold[self.hits]:
+                card_to_play = i
+                p_playable = probability_of_playable
+        return card_to_play
+        
+    def card_to_hint(self, hints, hands, knowledge, board, unusable, important):
+        yield self.hint_playable(hands, knowledge)
+        yield self.hint_discardable(hands, knowledge, board, unusable)
+        yield self.hint_important(hands, knowledge, important)
+        yield self.hint_highest_info(hands, knowledge, hints)
+
+    def hint_playable(self, hands, knowledge):
+        op_playable = self.get_opponents_playable_cards(hands)
+        return self.get_best_hint_for_all_opponent(
+            target_cards=op_playable,
+            hands = hands,
+            knowledge=knowledge
+        )
+        
+    def hint_discardable(self, hands, knowledge, board, unusable):
+        op_discardable = self.get_opponents_discardable_cards(hands=hands, board=board, unusable=unusable)
+        return self.get_best_hint_for_all_opponent(
+            target_cards=op_discardable,
+            hands=hands, 
+            knowledge=knowledge
+            )
+
+    def hint_important(self, hands, knowledge, important_cards):
+        op_important = self.get_opponents_important_cards(hands=hands, important_cards=important_cards)
+        return self.get_best_hint_for_all_opponent(
+            target_cards=op_important,
+            hands=hands,
+            knowledge=knowledge
+        )
+        
+    def hint_highest_info(self, hands, knowledge, hints):
+        op_cards = self.get_opponents_all_cards(hands=hands)
+        if hints == 1:
+                if  np.random.rand() <= self.greedy:
+                    
+                    self.greedy *= 0.8
+                    return self.get_best_hint_for_all_opponent(
+                            target_cards=op_cards,
+                            hands=hands,
+                            knowledge=knowledge,
+                        )
+                else:
+                    self.greedy = 0.8
+                    return None
+        else:
+            return self.get_best_hint_for_all_opponent(
+                    target_cards=op_cards,
+                    hands=hands,
+                    knowledge=knowledge,
+                )
+                
+            # return self.get_best_hint_for_all_opponent(
+            #     target_cards=op_cards,
+            #     hands=hands,
+            #     knowledge=knowledge,
+            # )
 
     def get_best_hint_for_all_opponent(self, target_cards, hands, knowledge):
         best_hint = None
