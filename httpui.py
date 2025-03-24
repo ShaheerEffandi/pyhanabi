@@ -589,10 +589,11 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             participantslock.release()
             s.wfile.write(b"<html><head><title>Hanabi</title></head>")
             s.wfile.write(b'<body><center>')
-            s.wfile.write(tutorial.intro)
+            s.wfile.write(tutorial.intro.encode())
             if not path.startswith("/tutorial/newtab"):
                 s.wfile.write(b'<br/>If you want to open this tutorial in a new tab for reference during the game, click here  <a href="/tutorial/newtab" target="_blank">here</a><br/>\n')
-                s.wfile.write(b'<form action="/tutorialdone" method="POST"><input type="hidden" value="%s" name="gid"/><input type="submit" value="Continue"/></form>\n'%(gid))
+                s.wfile.write(('<form action="/tutorialdone" method="POST"><input type="hidden" value="%s" name="gid"/><input type="submit" value="Continue"/></form>\n'%(gid)).encode())
+                s.wfile.write(b'<a href="/">Return home</a>')
             
             s.wfile.write((tutorial.summary).encode())
             
@@ -963,7 +964,11 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             s.wfile.write(b'<li><a href="/new/probabilistic">Probabilistic Player</a></li>\n')
             s.wfile.write(b'</ul><br/>')
             s.wfile.write(b'<p>Or select a <a href="/selectreplay/">replay file to view</a></p>')
+            
+            s.wfile.write(f"""<div style="display: flex; justify-content: center; width: 100%;"><div style="text-align: left; width: min(800px, 90vw); padding: 15px; box-sizing: border-box;">{tutorial.summary}</div></div>""".encode())
             s.wfile.write(b'</body></html>')
+
+            
             return
             
         if path.startswith("/explain") and debug:
