@@ -1307,10 +1307,21 @@ class ProbabilisticPlayer (Player):
         
     """
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
-       
+        
+        """
+        Determines the best action for the AI to take, it evaluates the following actions:
+         1. **Playing a card**: If the probability of a card in hand being playable is above a certain threshold based on the number of mistakes made in the game so far, it will play that card
+         2. **Giving a hint**: If a hint is available, and there is a hint that would help the player learn more about the cards in their hand, the AI will give that hint
+         3. **Discarding a card**: The AI calculates a utility value for each card in hand and discards the card with the lowest value
+
+        Args: explained by yawgmoth in the README.md file
+        
+        Returns:
+            Action: the action the AI has decided to take.
+        """
         # knowledge already filters out based on hints given, we want to further filter out by removing any cards we know it cannot be
         # i.e. cards in the opponents hand, cards already played, and cards in the trash
-        print(hands)
+        
         updated_hand_knowledge = self.update_hand_knowledge(knowledge[nr], trash, played, hands)
         self.update_playable_cards(board)
         playable_cards = self.get_target_cards_filter(self.playable_cards)
@@ -1344,20 +1355,68 @@ class ProbabilisticPlayer (Player):
         return Action(DISCARD, cnr=card_to_discard)
 
     def update_playable_cards(self, board):
+        """
+        Updates which cards are immediately playable
+        
+        Args:
+            board (list): shows the top most card for each colour, (col, 0) if no card has been played on that pile
+        """
         for i, (col, num) in enumerate(board):
             self.playable_cards[i] = [col, 4] if num == 5 else [col, num] #this is to store which cards are playable as indexes for a numpy array. if a stack of colours is complete, then we simply keep the playable as [col, 4] since that would refer to a card with (col, 5) because of 0-indexing. and since there is only 1 copy of each (col, 5), it should theoretically never cause a problem. 
     
+        
     def get_target_cards_filter(self, target_cards):
+        """
+        A helper function that takes a list/array of tuples (cards) and splits them into 2 lists one representing the colour of each card, and the other representing its rank
+        Mainly used for easy indexing with numpy arrays 
+
+        Args:
+            target_cards (list-like[(int, int)]): A list of tuples (col, rank), is usually a numpy array
+
+        Returns:
+            col_ind: list of each cards colour in target_cards
+            rank_ind: list of each cards rank in target_cards
+        """
         col_ind, rank_ind = zip(*target_cards)
         return col_ind, rank_ind    
     
     def update_hand_knowledge(self, hand_knowledge, trash, played, hands):
+        """
+        Uses the list of cards that:
+          - In the trash
+          - Have been successfully played
+          - In each other players hand
+        
+        To update the knowledge the AI player has about their own hand
+
+        Args:
+            hand_knowledge (list[list[int]]): knowledge[nr] (see README.md)
+            trash (list[(int, int)]): List of cards that are in the trash
+            played (list[(int, int)]): List of cards that have been successfully played
+            hands (list[list[(int, int)]]): list of cards that each player has where hands[nr] 
+
+        Returns:
+            np.ndarray[np.ndarray[int]]: the updated hand knowledge returned as a numpy array
+        """
         used_cards = trash + played + [card for hand in hands for card in hand]
         card_counts = Counter(used_cards)
         used = dict(card_counts)
         return np.array(update_knowledge(hand_knowledge, used))
 
     def card_to_play(self, hand_knowledge, playable):
+        """
+        Using the AIs knowledge of their hand, calculates which cards have the highest probability of being playable and returns it if the probability of being playable is equal to or higher than the probability threshold
+
+        Args:
+            hand_knowledge (np.ndarray[np.ndarray[int]]): the AIs knowledge of their own hand
+            playable (list[int], list[int]): 2 lists representing the colours of each playable card and the rank of each playable card, used for numpy array indexing. col[int],rank[int]
+
+        Raises:
+            ValueError: raised if there is a card with no possible values in hand knowledge. card[col] = [0,0,0,0,0] for each colout
+
+        Returns:
+            int: the index of the most likely to be playable card if it is above the probability threshold. Returns -1 if no applicable card
+        """
         card_to_play = -1
         p_playable = 0
         for i, card in enumerate(hand_knowledge): #iterate through each card in hand, each card is a col, rank 2d list. divide entire 
@@ -1368,18 +1427,42 @@ class ProbabilisticPlayer (Player):
             probabilities = card.copy()/total_number_of_possible_cards
             probability_of_playable = np.sum(probabilities[playable])
             
-            if probability_of_playable > p_playable and probability_of_playable > self.probability_threshold[self.hits]:
+            if probability_of_playable > p_playable and probability_of_playable >= self.probability_threshold[self.hits]:
                 card_to_play = i
                 p_playable = probability_of_playable
         return card_to_play
         
     def card_to_hint(self, hints, hands, knowledge, board, unusable, important):
+        """
+        A helper function that calls each hint-finding function and yields the result
+
+        Args:
+            hints (int): number of hints left
+            hands (list[list[tuple(int, int)]]): list of hands each player has
+            knowledge (list[list[list[int]]]): see README.md, knowledge structure containing the hands of all players
+            board (list[tuple(int, int)]): the current board state
+            unusable (np.ndarray[(N,2), dtype=int]): list of cards unusable cards
+            important (np.ndarray[(N,2), dtype=int]): list of cards which are usable, and only have 1 copy left in any players hands or deck
+
+        Yields:
+            Action: a hint action if a hint can be found for that function, otherwise returns None
+        """
         yield self.hint_playable(hands, knowledge)
         yield self.hint_discardable(hands, knowledge, board, unusable)
         yield self.hint_important(hands, knowledge, important)
         yield self.hint_highest_info(hands, knowledge, hints)
 
     def hint_playable(self, hands, knowledge):
+        """
+        Hint function that finds a hint that hints towards a playable card if there is one
+
+        Args:
+            hands (list[list[tuple(int, int)]]): each players' hands
+            knowledge (list[list[list[int]]]): see README.md, knowledge structure containing the hands of all players
+
+        Returns:
+            Action: returns a hint action that gives a hint towards a playable card. Returns None if no useful hint is found
+        """
         op_playable = self.get_opponents_playable_cards(hands)
         return self.get_best_hint_for_all_opponent(
             target_cards=op_playable,
@@ -1388,6 +1471,18 @@ class ProbabilisticPlayer (Player):
         )
         
     def hint_discardable(self, hands, knowledge, board, unusable):
+        """
+        Hint function that finds a hints towards a discardable card if there is one
+
+        Args:
+            hands (list[list[tuple(int, int)]]): each players' hands
+            knowledge (list[list[list[int]]]): see README.md, knowledge structure containing the hands of all players
+            board (list[tuple(int, int)]): the current board state
+            unusable (np.ndarray[(N,2), dtype=int]): list of cards unusable cards
+
+        Returns:
+            Action: returns a hint action that gives a hint towards a discardable card. Returns None if no useful hint is found
+        """
         op_discardable = self.get_opponents_discardable_cards(hands=hands, board=board, unusable=unusable)
         return self.get_best_hint_for_all_opponent(
             target_cards=op_discardable,
@@ -1396,6 +1491,17 @@ class ProbabilisticPlayer (Player):
             )
 
     def hint_important(self, hands, knowledge, important_cards):
+        """
+        Hint function that finds a hints towards an important card if there is one. A card is important if it is still usable but there is only 1 copy of that card left in any players hand or deck
+
+        Args:
+            hands (list[list[tuple(int, int)]]): each players' hands
+            knowledge (list[list[list[int]]]): see README.md, knowledge structure containing the hands of all players
+            unusable (np.ndarray[(N,2), dtype=int]): list of cards important cards
+
+        Returns:
+            Action: returns a hint action that gives a hint towards an important card. Returns None if no useful hint is found
+        """
         op_important = self.get_opponents_important_cards(hands=hands, important_cards=important_cards)
         return self.get_best_hint_for_all_opponent(
             target_cards=op_important,
@@ -1404,6 +1510,20 @@ class ProbabilisticPlayer (Player):
         )
         
     def hint_highest_info(self, hands, knowledge, hints):
+        """
+        A hint function that gives the hint that will give the player the most information about their hand. If there is only 1 hint, there is a chance for the AI
+        to not return a hint as to not be greedy and hoard hints. The chance of not giving a hint increases if the AI does give a highest info hint when only 1 hint is left
+        and resets if the AI decides to not give a hint.       
+        
+        
+        Args:
+            hands (list[list[tuple(int, int)]]): each players' hands
+            knowledge (list[list[list[int]]]): see README.md, knowledge structure containing the hands of all players
+            hints (int): number of hints available
+
+        Returns:
+            Action: Returns the hint that gives a player the most information about the cards in their hand. Otherwise returns None
+        """
         op_cards = self.get_opponents_all_cards(hands=hands)
         if hints == 1:
                 if  np.random.rand() <= self.greedy:
@@ -1423,14 +1543,19 @@ class ProbabilisticPlayer (Player):
                     hands=hands,
                     knowledge=knowledge,
                 )
-                
-            # return self.get_best_hint_for_all_opponent(
-            #     target_cards=op_cards,
-            #     hands=hands,
-            #     knowledge=knowledge,
-            # )
 
     def get_best_hint_for_all_opponent(self, target_cards, hands, knowledge):
+        """
+        Uses expected information gain from a hint to find the best hint to give.
+
+        Args:
+            target_cards (dict{int: list[int]}): dict[int, list[int]]: a (player_number: card_index) dictionary where the card_index refer to the cards that we want to hint about.
+            hands (list[list[tuple(int, int)]]): each players' hands
+            knowledge (list[list[list[int]]]): see README.md, knowledge structure containing the hands of all players
+
+        Returns:
+            Action: a hint that gives the highest information gain 
+        """
         best_hint = None
         expected_information_gain = 0
         
@@ -1447,8 +1572,18 @@ class ProbabilisticPlayer (Player):
             else:
                 return None
 
+        
     def get_opponents_cards(self, hands, condition):
-    
+        """
+        Finds for each player's hands, which cards fufill a certain condition
+
+        Args:
+            hands (list[list[tuple(int, int)]]): each players' hands
+            condition (Callable[[int, int], bool]): A function that takes a cards colour and rank, and returns if that card fulfills the condition 
+
+        Returns:
+            dict[int, list[int]]: a (player_number: card_index) dictionary
+        """
         op_cards = {}
         for pnr, hand in enumerate(hands):
                 if pnr == self.pnr:
@@ -1458,29 +1593,97 @@ class ProbabilisticPlayer (Player):
         
         return op_cards
 
+
     def get_opponents_playable_cards(self, hands):
+        """
+        Finds all cards in each opponents hands that are playable
+
+        Args:
+            hands (list[list[tuple(int, int)]]): each players' hands
+
+        Returns:
+            dict{int: list[int]}: a (player_number: card_index) dictionary where the card_index refers to the playable cards in that players hand
+        """
         return self.get_opponents_cards(hands, lambda col, rank: [col, rank - 1] in self.playable_cards)
 
     def get_opponents_discardable_cards(self, hands, board, unusable):
+        """
+        Finds all cards in each opponents hands that are discardable
+
+        Args:
+            hands (list[list[tuple(int, int)]]): each players' hands
+
+        Returns:
+            dict{int: list[int]}: a (player_number: card_index) dictionary where the card_index refers to the discardable cards in that players hand
+        """
         return self.get_opponents_cards(hands, lambda col, rank: board[col][1] >= rank or np.any(np.all(unusable == (col, rank), axis=1)))
 
     def get_opponents_all_cards(self, hands):
+        """
+        Finds all cards in each opponents hands, used for highest info hints
+
+        Args:
+            hands (list[list[tuple(int, int)]]): each players' hands
+
+        Returns:
+            dict{int: list[int]}: a (player_number: card_index) dictionary 
+        """
         return self.get_opponents_cards(hands, lambda col, rank: True)
     
     def get_opponents_important_cards(self, hands, important_cards):
+        """
+        Finds all cards in each opponents hands that are important, i.e. they are usable and there is only one left that isn't in trash
+
+        Args:
+            hands (list[list[tuple(int, int)]]): each players' hands
+
+        Returns:
+            dict{int: list[int]}: a (player_number: card_index) dictionary where the card_index refers to the playable cards in that players hand
+        """
         return self.get_opponents_cards(hands, lambda col, rank: np.any(np.all(important_cards == (col, rank), axis= 1)))
     
 
 
     def entropy(self, probability_distribution):
+        """
+        Calculates the entropy of a probability distribution through the Shannon entropy formula:
+                        entropy = -Σp(x)log2(x)
+
+        Args:
+            probability_distribution (np.ndarray[float]): a 2d array representing the probability distribution a card can have. Can be used on higher dimensional arrays if necessary
+
+        Returns:
+            float: entropy
+        """
         probability_distribution = probability_distribution[probability_distribution > 0]
         return -np.sum(probability_distribution * np.log2(probability_distribution))
-            
+        
     def information_gain(self, prob_dist_before, prob_dist_after):
+        """
+        Converts 2 probability distributions into entropy and finds the change in entropy by calculating entropy_before - entropy_after
+
+        Args:
+            prob_dist_before (np.ndarray(float)): probability distribution of a card before a hint was given
+            prob_dist_after (np.ndarray(float)): probability distribution of a card after a hint was given, presumably of the same shape as probability distribution before.
+
+        Returns:
+            float: change in entropy
+        """
         return self.entropy(prob_dist_before) - self.entropy(prob_dist_after)
             
     def get_best_hint(self, hand, knowledge, pnr, target):
+        """
+        for a given card in a given players hand, simulate both the colour hint and the number hint and find the hint that gives the highest information gain
 
+        Args:
+            hand (list[tuple(int, int)]): player pnr's hand
+            knowledge (list[list[int]]]): see README.md, knowledge structure containing the hands of a single player
+            pnr (int): player number
+            target (list[ind]): list of target card indexes in pnr's hand
+
+        Returns:
+            (Action, float): returns both the best hint for that card as well as the information gain of that hint
+        """
         targets_in_hand = hand[target]    
         possible_colour_hints = np.unique(targets_in_hand[:, 0])
         possible_rank_hints = np.unique(targets_in_hand[:, 1])
@@ -1498,18 +1701,49 @@ class ProbabilisticPlayer (Player):
         return (possible_hints[best], info_gain[best])
     
     def calculate_prob_dist(self, knowledge):
+        """
+        Calculates the probability distribution of each card in a players hand.
+
+        Args:
+            knowledge (list[list[int]]]): see README.md, knowledge structure containing the hands of a single player
+
+        Returns:
+            np.ndarray[[float]]: a 2d np.array of the probability distributions. of the same shape as knowledge
+        """
         return np.array([
             card_dist/np.sum(card_dist) if np.sum(card_dist) > 0 else np.zeros_like(card_dist) 
             for card_dist in knowledge
             ])
                 
     def simulate_hint(self, hand, knowledge, hint):
+        """
+        A helper function that calls other simulate hint functions that simulate either a colour hint or a rank hint
+
+        Args:
+            hand (list[tuple(int, int)]): player pnr's hand
+            knowledge (list[list[int]]]): see README.md, knowledge structure containing the hands of a single player
+            hint (Action): a given hint
+
+        Returns:
+            np.ndarray([float]): an updated knowledge after the hint has been simulated. same shape as knowledge
+        """
         if hint.type == HINT_COLOR:
             return self.simulate_colour_hint(hand, knowledge, hint.col)
         else:
             return self.simulate_rank_hint(hand, knowledge, hint.num)
     
     def simulate_colour_hint(self, hand, knowledge, col):
+        """
+        Simulates hinting a specific colour to a player
+
+        Args:
+            hand (list[tuple(int, int)]): player pnr's hand
+            knowledge (list[list[int]]]): see README.md, knowledge structure containing the hands of a single player
+            col (int): a number representing a colour
+
+        Returns:
+            np.ndarray([float]): an updated knowledge after the colour hint has been simulated. same shape as knowledge
+        """
         post_hint_knowledge = knowledge.copy()
         matching_colour_indexes = np.array([card[0] == col for card in hand])
 
@@ -1520,6 +1754,17 @@ class ProbabilisticPlayer (Player):
         return post_hint_knowledge
             
     def simulate_rank_hint(self, hand, knowledge, num):
+        """
+        Simulates hinting a specific rank to a player
+
+        Args:
+            hand (list[tuple(int, int)]): player pnr's hand
+            knowledge (list[list[int]]]): see README.md, knowledge structure containing the hands of a single player
+            num (int): a cards rank to be hinted
+
+        Returns:
+            np.ndarray([float]): an updated knowledge after the number hint has been simulated. same shape as knowledge
+        """
         post_hint_knowledge = knowledge.copy()
         matching_number_indexes = np.array([card[1] == num for card in hand])
         
@@ -1530,6 +1775,18 @@ class ProbabilisticPlayer (Player):
         return post_hint_knowledge 
     
     def calculate_net_info_gain(self, before_dist, after_dist, target_indexes, lamda_weight=0.9):
+        """
+        Calculates the information gain of each card, while also demeriting informatin gain on non_playable cards
+
+        Args:
+            before_dist (np.ndarray[[float]]): probability distribution before a hint is given
+            after_dist (np.ndarray[[float]]): probability distribution after a hint is given 
+            target_indexes (list[int]): a list of cards that are the targets for our hint
+            lamda_weight (float, optional): weighting used to control the trade-off between information gain on important cards vs information gain on non-important cards. Defaults to 0.9.
+
+        Returns:
+            float: the net information gain
+        """
         info_gain_targets = info_gain_non_targets = 0
         for i, (b_dist, a_dist) in enumerate(zip(before_dist, after_dist)):
             info_gain = self.information_gain(b_dist, a_dist)
@@ -1539,13 +1796,33 @@ class ProbabilisticPlayer (Player):
                 info_gain_non_targets += info_gain
         
         return (lamda_weight * info_gain_targets - (1-lamda_weight) *info_gain_targets)
-    
-    #I will refer to usable as a card which still can be played at some point in the game. For example:
-    #if the board is [1,4,5,2,1] then although the card (0,3) isn't playable just yet, it will still have use 
+     
     def get_usable_cards(self, board):
+        """
+        Finds all the cards that are still usable based on the board.
+        NOTE: a usable card is not necessarily immediately playable but will still need to be used at some point in the future 
+
+        Args:
+            board (list[tuple(int, int)]): the current board state
+
+        Returns:
+            np.ndarray[[int, int]]: A numpy array of cards that are still usable
+        """
         return np.array([(col, i) for (col, rank) in board for i in range(rank + 1, 6)], dtype=int)
 
+    
     def get_unusable_cards(self, usable, trash):
+        """
+        Finds which cards that are unusable. It does this by finding any card who has all its copies in the trash and adds every card of that colour with a higher rank to the unusable list
+        Because this is used to hint which cards to discard/which cards are most likely to be discardable, we don't need to add cards that are already all in the trash to the list as those will already be impossible to have in hand
+
+        Args:
+            usable (np.ndarry[[int, int]]): list of usable cards
+            trash (list[tuple(int, int)]): list of cards that are in the trash
+
+        Returns:
+            np.ndarray[[int, int]] - numpy array of cards that are unusable
+        """
         if len(trash) == 0:
             return np.empty((0,2), dtype=int)
         unique_cards, count_cards = np.unique(trash, return_counts=True, axis=0)
@@ -1563,12 +1840,33 @@ class ProbabilisticPlayer (Player):
         return usable[unusable_by_extension_mask]
     
     def remove_unusable_from_usable(self, usable, unusable):
+        """
+        Takes an array of usable cards and an array of unusable cards and returns the cards in the usable array that are not in the unusable array
+
+        Args:
+            usable (np.ndarry[[int, int]]): array of usable cards
+            unusable (np.ndarry[[int, int]]): array of unusable cards
+
+        Returns:
+            np.ndarry[[int, int]]: usable - unusable
+        """
         usable_set = {tuple(card) for card in usable}
         unusable_set = {tuple(card) for card in unusable}
         set_diff = usable_set - unusable_set
         return np.array([list(card) for card in set_diff]) if set_diff else np.empty((0, usable.shape[1]))
 
     def get_important_cards(self, usable, unusable, trash):
+        """
+        Takes an array of usable cards, unusable cards and a list of cards in the trash to find which cards have only a single copy left in any players hand/deck, is in the usable array and not in the unusable array 
+
+        Args:
+            usable (np.ndarry[[int, int]]): array of usable cards
+            unusable (np.ndarry[[int, int]]): array of unusable cards
+            trash (_type_): _description_
+
+        Returns:
+            np.ndarry[[int, int]]: array of important cards
+        """
         usable =  self.remove_unusable_from_usable(usable, unusable)#a card isn't considered important if they are cannot be played at all even if there is only 1 of it left.
         
         count_cards_left = np.array([COUNTS[num - 1] for (_, num) in usable])
@@ -1582,6 +1880,18 @@ class ProbabilisticPlayer (Player):
         return usable[count_cards_left == 1]
 
     def find_lowest_utility_card(self, hand_knowledge, playable_cards, important_cards, unusable_cards):
+        """
+        Iterates through each card in hand_knowledge and calculates the utility value of that card
+
+        Args:
+            hand_knowledge (np.ndarray[[int]]]): see README.md, knowledge structure containing the hands of a single player
+            playable_cards (list[tuple(int, int)]): a list of playable cards
+            important_cards (np.ndarray[[int, int]]): a numpy array of important cards
+            unusable_cards (np.ndarray): a numpy array of cards of unusable cards
+
+        Returns:
+            int: the index of the card in hand with the lowest utility
+        """
         hand_utilities = np.zeros(len(hand_knowledge)) 
         for i, card in enumerate(hand_knowledge):
             uv = self.find_utility_value(card, playable_cards, important_cards, unusable_cards, i)
@@ -1590,6 +1900,25 @@ class ProbabilisticPlayer (Player):
         return np.argmin(hand_utilities)
     
     def find_utility_value(self, card, playable_cards, important_cards, unusable_cards, ind):
+        """
+        Uses the probability of a card being playable, being important and being unusable to calculate the utility value of that card. Each property is weighted as such:
+            - Playable: 0.3
+            - Important: 0.3
+            - Unusable: 0.5
+
+        Args:
+            card (np.ndarray[[int]]): knowledge structure for a single card in hand
+            playable_cards (list[tuple(int, int)]): a list of playable cards
+            important_cards (np.ndarray[[int, int]]): a numpy array of important cards
+            unusable_cards (np.ndarray): a numpy array of cards of unusable cards
+            ind (int): index of card
+
+        Raises:
+            ValueError: raises an error if there is no possible (col, rank) to assign to the card, i.e. np.sum(card) == 0
+
+        Returns:
+            float: the utility value of the card
+        """
         number_of_possibilities = np.sum(card)
         if number_of_possibilities == 0:
             raise ValueError(f"Invalid state: there are no possible values for card {ind + 1}. This suggests an error in hand knowledge representation")
@@ -1601,15 +1930,33 @@ class ProbabilisticPlayer (Player):
         
         return np.sum(probabilities[p_c]) * self.w_playable + np.sum(probabilities[i_c]) * self.w_important - np.sum(probabilities[u_c]) * self.w_unusable  
         
-        
-        
 
     def inform(self, action, player, game):
+        """
+        Overriden function from the Player Parent class.
+        Updates the AI's internal state based on an action taken in the game.
+
+        Args:
+            action (Action): The action that was taken, which could be a play, discard, or hint.
+            player (int): The player who took the action.
+            game (Game): The current state of the game, including hits, knowledge, board, and trash.
+
+        Updates:
+            - Stores the current number of hits (`self.hits`).
+            - If the action is a PLAY or DISCARD:
+                - Clears hints for the played/discarded card.
+                - Shifts hints forward for subsequent cards in the player's hand.
+            - If the action is a HINT directed at this AI (`self.pnr`):
+                - Stores the hint action and the player who gave it (`self.gothint`).
+                - Saves snapshots of the game state before acting on the hint, including:
+                    - Knowledge of all players (`self.last_knowledge`)
+                    - The board state (`self.last_board`)
+                    - The trash pile (`self.last_trash`)
+                    - Played cards (`self.played`)
+        """
         self.hits = game.hits
         if action.type in [PLAY, DISCARD]:
-
             x = str(action)
-
             if (action.cnr,player) in self.hints:
                 self.hints[(action.cnr,player)] = []
             for i in range(10):
@@ -1622,9 +1969,11 @@ class ProbabilisticPlayer (Player):
             self.last_board = game.board[:]
             self.last_trash = game.trash[:]
             self.played = game.played[:]
+
     
     
 class Game(object):
+    
     def __init__(self, players, log=sys.stdout, format=0):
         self.players = players
         self.hits = 3

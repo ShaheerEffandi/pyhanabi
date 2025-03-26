@@ -961,7 +961,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             s.wfile.write(b'<li><a href="/new/self">Self Recognition</a></li>\n')
             s.wfile.write(b'<li><a href="/new/intentional">Intentional Player</a></li>\n')
             s.wfile.write(b'<li><a href="/new/full">Fully Intentional Player</a></li>\n')
-            s.wfile.write(b'<li><a href="/new/probabilistic">Probabilistic Player</a></li>\n')
+            s.wfile.write(b'<li><a href="/new/probabilistic">Probabilistic Player <--------------------- This one</a></li>\n')
             s.wfile.write(b'</ul><br/>')
             s.wfile.write(b'<p>Or select a <a href="/selectreplay/">replay file to view</a></p>')
             
