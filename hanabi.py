@@ -1270,7 +1270,7 @@ def format_hand(hand):
     
 
 class ProbabilisticPlayer (Player):
-    def __init__(self, name, pnr, w_p=0.3, w_i=0.3, w_u=0.5):
+    def __init__(self, name, pnr, w_p=0.3, w_i=0.3, w_u=0.5, greedy=0.6):
         self.name = name
         self.hints = {}
         self.pnr = pnr
@@ -1291,7 +1291,8 @@ class ProbabilisticPlayer (Player):
         self.w_important = w_i
         self.w_unusable = w_u
         
-        self.greedy = 0.8 #The probability of the AI being greedy with last hint
+        
+        self.base_greedy = self.greedy = 0.6 #The probability of the AI being greedy with last hint
 
     """
         How do i want this to work - 
@@ -1528,14 +1529,14 @@ class ProbabilisticPlayer (Player):
         if hints == 1:
                 if  np.random.rand() <= self.greedy:
                     
-                    self.greedy *= 0.8
+                    self.greedy *= self.base_greedy
                     return self.get_best_hint_for_all_opponent(
                             target_cards=op_cards,
                             hands=hands,
                             knowledge=knowledge,
                         )
                 else:
-                    self.greedy = 0.8
+                    self.greedy = self.base_greedy
                     return None
         else:
             return self.get_best_hint_for_all_opponent(
@@ -1935,24 +1936,18 @@ class ProbabilisticPlayer (Player):
         """
         Overriden function from the Player Parent class.
         Updates the AI's internal state based on an action taken in the game.
+        If a card has been discarded, clears hint information about that card and shifts subsequent cards forward
+        If a card is hinted, stores the hint action and player who gave it in
+        Saves snapshot of game state before acting on the hint, including:
+            - board state ('self.last_board')
+            - trash pile ('self.last_trash')
+            - played cards ('self.played')
 
         Args:
             action (Action): The action that was taken, which could be a play, discard, or hint.
             player (int): The player who took the action.
             game (Game): The current state of the game, including hits, knowledge, board, and trash.
 
-        Updates:
-            - Stores the current number of hits (`self.hits`).
-            - If the action is a PLAY or DISCARD:
-                - Clears hints for the played/discarded card.
-                - Shifts hints forward for subsequent cards in the player's hand.
-            - If the action is a HINT directed at this AI (`self.pnr`):
-                - Stores the hint action and the player who gave it (`self.gothint`).
-                - Saves snapshots of the game state before acting on the hint, including:
-                    - Knowledge of all players (`self.last_knowledge`)
-                    - The board state (`self.last_board`)
-                    - The trash pile (`self.last_trash`)
-                    - Played cards (`self.played`)
         """
         self.hits = game.hits
         if action.type in [PLAY, DISCARD]:
