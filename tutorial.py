@@ -28,7 +28,7 @@ summary = """
 <p>The goal of the game is to play the cards on five stacks, one for each color, in ascending order, starting with the 1s. At the end of the game you will receive one point for each card that was successfully played.</p>
 <p>On your turn you have the choice between one of three actions:
 <ul>
-<li> <b>Play a card:</b> Choose a card from your hand and play it. If it is the next card in ascending order for any stack on the board, it will be placed there, otherwise it will be counted as a mistake and the car will be put in the trash.
+<li> <b>Play a card:</b> Choose a card from your hand and play it. If it is the next card in ascending order for any stack on the board, it will be placed there, otherwise it will be counted as a mistake and the card will be put in the trash.
 <li> <b>Give a hint:</b> Tell the other player about <b>all</b> cards in their hand that have a particular color or a particular rank. For example, you can tell the other player which of their cards are yellow, but you have to tell them all their yellow cards. Likewise, if you want to tell the other player which of their cards are 3s, you have to tell them all their 3s. You can also not tell them that they have zero of a particular color or rank. Giving a hint consumes one hint token, of which there are initially 8.
 <li> <b>Discard a card:</b> Choose a card from your hand and put it in the trash pile. This will regenerate one hint token, but you can never have more than the initial 8.
 </ul>
