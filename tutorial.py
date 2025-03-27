@@ -33,6 +33,7 @@ summary = """
 <li> <b>Discard a card:</b> Choose a card from your hand and put it in the trash pile. This will regenerate one hint token, but you can never have more than the initial 8.
 </ul>
 The game lasts until either the last card is drawn, plus one additional turn for each player, or until 3 mistakes have been made.
+At the end of the game you receive a score equal to the number of cards played successfully. If 5 complete stacks are made, then the final score is 25.  
 </td></tr></table>
 """
 
