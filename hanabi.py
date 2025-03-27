@@ -1448,10 +1448,17 @@ class ProbabilisticPlayer (Player):
         Yields:
             Action: a hint action if a hint can be found for that function, otherwise returns None
         """
-        yield self.hint_playable(hands, knowledge)
-        yield self.hint_discardable(hands, knowledge, board, unusable)
-        yield self.hint_important(hands, knowledge, important)
-        yield self.hint_highest_info(hands, knowledge, hints)
+        if hints == 1 and np.random.rand() > self.greedy:
+            self.greedy = self.base_greedy
+            yield None
+        else:
+            if hints == 1:
+                self.greedy *= self.base_greedy
+        
+            yield self.hint_playable(hands, knowledge)
+            yield self.hint_discardable(hands, knowledge, board, unusable)
+            yield self.hint_important(hands, knowledge, important)
+            yield self.hint_highest_info(hands, knowledge, hints)
 
     def hint_playable(self, hands, knowledge):
         """
@@ -1526,25 +1533,11 @@ class ProbabilisticPlayer (Player):
             Action: Returns the hint that gives a player the most information about the cards in their hand. Otherwise returns None
         """
         op_cards = self.get_opponents_all_cards(hands=hands)
-        if hints == 1:
-                if  np.random.rand() <= self.greedy:
-                    
-                    self.greedy *= self.base_greedy
-                    return self.get_best_hint_for_all_opponent(
-                            target_cards=op_cards,
-                            hands=hands,
-                            knowledge=knowledge,
-                        )
-                else:
-                    self.greedy = self.base_greedy
-                    return None
-        else:
-            return self.get_best_hint_for_all_opponent(
-                    target_cards=op_cards,
-                    hands=hands,
-                    knowledge=knowledge,
-                )
-
+        return self.get_best_hint_for_all_opponent(
+                target_cards=op_cards,
+                hands=hands,
+                knowledge=knowledge,
+            )
     def get_best_hint_for_all_opponent(self, target_cards, hands, knowledge):
         """
         Uses expected information gain from a hint to find the best hint to give.
