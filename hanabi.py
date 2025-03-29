@@ -358,7 +358,6 @@ class SelfRecognitionPlayer(Player):
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
         handsize = len(knowledge[0])
         possible = []
-        print(self.hints)
         if self.gothint:
             
             possiblehands = []
@@ -1294,19 +1293,6 @@ class ProbabilisticPlayer (Player):
         
         self.base_greedy = self.greedy = 0.6 #The probability of the AI being greedy with last hint
 
-    """
-        How do i want this to work - 
-        Action priority:
-        1. if likely playable card - play card
-        2. if has hint token
-        -   1. if opponent has playable card - hint playable card
-        -   2. if has good amount of hint tokens - hint whatever gives the opponent the most amount of knowledge about their hand
-        2.5 if opponent has hinted at a useless card and hint token < max
-        -   discard useless card
-        else
-        -   discard card based on which is most likely to be useless or which is most likely to be expendable 
-        
-    """
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
         
         """
