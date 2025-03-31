@@ -1,0 +1,30 @@
+Scores of ai/ai simulations
+random vs prob: 
+average: 1.2309
+standard deviation: 1.2690729863268158
+
+selfrecognition vs prob
+average: 1.4287
+stddev: 1.3862570038950515
+
+SelfIntentional vs prob
+average: 1.1257
+stddev: 1.3415213296656132
+
+average: 1.2677
+stddev: 1.2775758020536392
+
+Average Decision Time: 0.000204 seconds
+Standard Deviation of Decision Time: 0.000065 seconds
+________________
+Average Decision Time: 0.000745 seconds
+Standard Deviation of Decision Time: 0.000051 seconds
+_______________
+Average Decision Time: 1.648377 seconds
+Standard Deviation of Decision Time: 4.897178 seconds
+
+end_time = time.time()  # End timing
+            decision_time = end_time - start_time
+            # Write to file
+            with open("decision_times.txt", "a") as file:
+                file.write(f"{decision_time}\n")
