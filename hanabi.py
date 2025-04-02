@@ -1775,7 +1775,7 @@ class ProbabilisticPlayer (Player):
             else:
                 info_gain_non_targets += info_gain
         
-        return (lamda_weight * info_gain_targets - (1-lamda_weight) *info_gain_targets)
+        return (lamda_weight * info_gain_targets - (1-lamda_weight) * info_gain_non_targets)
      
     def get_usable_cards(self, board):
         """
