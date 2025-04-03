@@ -1364,6 +1364,8 @@ class ProbabilisticPlayer (Player):
             col_ind: list of each cards colour in target_cards
             rank_ind: list of each cards rank in target_cards
         """
+        if len(target_cards) == 0:
+            return [], []
         col_ind, rank_ind = zip(*target_cards)
         return col_ind, rank_ind    
     
@@ -2119,7 +2121,7 @@ class NullStream(object):
         
 random.seed(123)
 
-playertypes = {"random": Player, "inner": InnerStatePlayer, "outer": OuterStatePlayer, "self": SelfRecognitionPlayer, "intentional": IntentionalPlayer, "sample": SamplingRecognitionPlayer, "full": SelfIntentionalPlayer, "timed": TimedPlayer}
+playertypes = {"random": Player, "inner": InnerStatePlayer, "outer": OuterStatePlayer, "self": SelfRecognitionPlayer, "intentional": IntentionalPlayer, "sample": SamplingRecognitionPlayer, "full": SelfIntentionalPlayer, "timed": TimedPlayer, "prob": ProbabilisticPlayer}
 names = ["Shangdi", "Yu Di", "Tian", "Nu Wa", "Pangu"]
         
         
